@@ -17,6 +17,10 @@
       defer
     ></script>
     <script src="https://cdn.jsdelivr.net/npm/chroma-js@2.4.2/chroma.min.js" defer></script>
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index'] %}
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
+    {% endif %}
     <style>
       :root {
         --bg: #f4f7f9;
@@ -749,6 +753,55 @@
       }
     </style>
     {% block head_extra %}{% endblock %}
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index'] %}
+    <style>
+      #lumhr_map_export_controls {
+        position: fixed;
+        right: 16px;
+        bottom: 18px;
+        z-index: 1200;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.45rem;
+        background: rgba(255,255,255,0.96);
+        border: 1px solid #c8d9e2;
+        border-radius: 0.55rem;
+        box-shadow: 0 3px 12px rgba(15,45,58,0.18);
+      }
+      #lumhr_map_export_controls button {
+        border: 1px solid #0c7da0;
+        border-radius: 0.35rem;
+        padding: 0.35rem 0.55rem;
+        background: #fff;
+        color: #0c7da0;
+        font-size: 0.76rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      #lumhr_map_export_controls button:first-child {
+        background: #0c7da0;
+        color: #fff;
+      }
+      #lumhr_map_export_controls button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+      #lumhr_map_export_status {
+        max-width: 180px;
+        font-size: 0.68rem;
+        line-height: 1.2;
+        color: #5c707d;
+      }
+      @media (max-width: 700px) {
+        #lumhr_map_export_controls {
+          right: 8px;
+          bottom: 10px;
+          max-width: calc(100vw - 16px);
+        }
+      }
+    </style>
+    {% endif %}
   </head>
   <body class="{% block body_class %}home-layout{% endblock %}">
     <nav class="top-nav">
@@ -758,11 +811,86 @@
         <a href="/access_index" class="{% if request.path == '/access_index' %}active{% endif %}">Access Index</a>
         <a href="/access_gap_index" class="{% if request.path == '/access_gap_index' %}active{% endif %}">Access Gap</a>
         <a href="/samhi" class="{% if request.path == '/samhi' %}active{% endif %}">SAMHI</a>
+        <a href="/samhi_forecast" class="{% if request.path == '/samhi_forecast' %}active{% endif %}">SAMHI Forecast</a>
         <a href="/rural_risk_index" class="{% if request.path == '/rural_risk_index' %}active{% endif %}">Rural Risk</a>
       </div>
     </nav>
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index'] %}
+    <div id="lumhr_map_export_controls" aria-label="Map export controls">
+      <button type="button" data-lumhr-export="png">Export PNG</button>
+      <button type="button" data-lumhr-export="pdf">Export PDF</button>
+      <span id="lumhr_map_export_status">Exports the current map and active legend.</span>
+    </div>
+    {% endif %}
     {% block content %}{% endblock %}
     {% block scripts %}{% endblock %}
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index'] %}
+    <script>
+      (() => {
+        async function exportCurrentMap(format) {
+          const mapElement = document.getElementById("map");
+          const status = document.getElementById("lumhr_map_export_status");
+          const buttons = document.querySelectorAll("[data-lumhr-export]");
+          if (!mapElement || typeof html2canvas === "undefined") {
+            status.textContent = "Map export library is unavailable.";
+            return;
+          }
+
+          buttons.forEach(button => { button.disabled = true; });
+          status.textContent = format === "pdf" ? "Rendering map PDF..." : "Rendering high-resolution PNG...";
+          const zoomControls = mapElement.querySelectorAll(".leaflet-control-zoom");
+          zoomControls.forEach(control => { control.style.display = "none"; });
+
+          try {
+            const canvas = await html2canvas(mapElement, {
+              backgroundColor: "#ffffff",
+              scale: 3,
+              useCORS: true,
+              allowTaint: false,
+              logging: false
+            });
+            const imageData = canvas.toDataURL("image/png");
+
+            if (format === "png") {
+              const link = document.createElement("a");
+              link.href = imageData;
+              link.download = `lumhr_${document.body.className || "map"}_map_300dpi.png`;
+              document.body.appendChild(link);
+              link.click();
+              link.remove();
+              status.textContent = "High-resolution PNG downloaded.";
+            } else {
+              const jsPDF = window.jspdf && window.jspdf.jsPDF;
+              if (!jsPDF) throw new Error("PDF export library is unavailable.");
+              const orientation = canvas.width >= canvas.height ? "landscape" : "portrait";
+              const pdf = new jsPDF({ orientation, unit: "pt", format: "a4" });
+              const pageWidth = pdf.internal.pageSize.getWidth();
+              const pageHeight = pdf.internal.pageSize.getHeight();
+              const margin = 14;
+              const scale = Math.min((pageWidth - margin * 2) / canvas.width, (pageHeight - margin * 2) / canvas.height);
+              const width = canvas.width * scale;
+              const height = canvas.height * scale;
+              pdf.addImage(imageData, "PNG", (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, "FAST");
+              pdf.save("lumhr_map_300dpi.pdf");
+              status.textContent = "Map PDF downloaded.";
+            }
+          } catch (error) {
+            console.error("Map export failed:", error);
+            status.textContent = error.message || "Map export failed.";
+          } finally {
+            zoomControls.forEach(control => { control.style.display = ""; });
+            buttons.forEach(button => { button.disabled = false; });
+          }
+        }
+
+        window.addEventListener("load", () => {
+          document.querySelectorAll("[data-lumhr-export]").forEach(button => {
+            button.addEventListener("click", () => exportCurrentMap(button.dataset.lumhrExport));
+          });
+        });
+      })();
+    </script>
+    {% endif %}
   </body>
 </html>
 

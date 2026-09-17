@@ -1,0 +1,4 @@
+# Dependencies for 04_plot_results.py
+# Matplotlib 3.8+ supports NumPy 2.x; older system Matplotlib builds may not.
+matplotlib>=3.8.4
+pandas>=2.0

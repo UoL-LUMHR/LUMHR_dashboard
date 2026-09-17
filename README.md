@@ -8,11 +8,12 @@ Developed by the [Lincolnshire Unit for Mental Health Research (LUMHR)](https://
 
 The dashboard provides interactive mapping and index calculation across Lincolnshire's 435 LSOAs:
 
-- **Need Index**: Models local mental health demand using QOF depression and SMI prevalence, antidepressant prescribing, and SAMHI data.
-- **Access Index**: Assesses healthcare accessibility combining clinical quality indicators, travel times (car and public transport), vehicle availability, and digital exclusion (DERI).
-- **Access Gap Index**: Highlights geographic disparities by comparing clinical need directly against accessibility (Need minus Access).
+- **Need Index**: Models local mental health demand using QOF depression and SMI prevalence, antidepressant prescribing, and SAMHI data. Range 0.0 lowest need to 1.0 most need.
+- **Access Index**: Assesses healthcare accessibility combining clinical quality indicators, travel times (car and public transport), vehicle availability, and digital exclusion (DERI). Range 0.0 lowest access to 1.0 most access.
+- **Access Gap Index**: Highlights geographic disparities by comparing clinical need directly against accessibility (Need minus Access). Range (+1.0 to -1.0). +1.0 most severe gap, the area has a high need but low access, 0.0 balanced level of access matches its level of need, to -1.0 surplus access the area has lowest need but the highest access.
 - **Small Area Mental Health Index (SAMHI)**: Longitudinal view of composite mental health indicators from 2011 to 2022.
-- **Rural Risk Index**: Evaluates rural vulnerability using 2021 Rural/Urban classification, travel times, car non-ownership, geodemographics (LSOAC), and IMD deprivation.
+- **SAMHI Machine Learning Forecasting & Projections**: 11-model spatial-temporal machine learning suite (ElasticNet, Stacking Ensemble, CatBoost, LightGBM, Explainable Boosting Machine) with multi-year forward projections (2023–2025) and TreeSHAP explainability. See [scripts/machine_learning/samhi](scripts/machine_learning/samhi/README.md).
+- **Rural Risk Index**: Evaluates rural vulnerability using 2021 Rural/Urban classification, travel times, car non-ownership, geodemographics (LSOAC), and IMD deprivation. Range 0.0 low risk to 1.0 high risk.
 
 ## Data Sources
 

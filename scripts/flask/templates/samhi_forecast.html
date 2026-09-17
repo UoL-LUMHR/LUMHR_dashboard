@@ -1,0 +1,1242 @@
+{% extends "base.html" %}
+
+{% block title %}SAMHI Machine Learning Forecast & Projections | LUMHR{% endblock %}
+{% block body_class %}map-layout{% endblock %}
+
+{% block head_extra %}
+<style>
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin: 0.6rem 0;
+  }
+  .kpi-card {
+    background: #f4f8fa;
+    border: 1px solid #d2e4ec;
+    border-radius: 0.55rem;
+    padding: 0.55rem 0.65rem;
+    text-align: center;
+  }
+  .kpi-val {
+    font-size: 1.12rem;
+    font-weight: 800;
+    color: #0c7da0;
+    line-height: 1.15;
+  }
+  .kpi-lbl {
+    font-size: 0.70rem;
+    color: #526774;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-top: 0.2rem;
+  }
+  .shap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    margin-top: 0.4rem;
+  }
+  .shap-table th, .shap-table td {
+    padding: 0.3rem 0.45rem;
+    text-align: left;
+    border-bottom: 1px solid #e3edf2;
+  }
+  .shap-table th {
+    background: #eef6f9;
+    color: #0f2d3a;
+    font-weight: 700;
+  }
+  .badge-tag {
+    display: inline-block;
+    padding: 0.15rem 0.45rem;
+    border-radius: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+  .badge-pos {
+    background: #ffe3e3;
+    color: #b01e1e;
+  }
+  .badge-neg {
+    background: #e2f4e8;
+    color: #1a7a3b;
+  }
+  .badge-proj {
+    background: #e0f2fe;
+    color: #0369a1;
+    font-weight: 700;
+    font-size: 0.68rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.25rem;
+  }
+  .map-inspector {
+    position: absolute;
+    bottom: 24px;
+    left: 24px;
+    z-index: 500;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(4px);
+    border: 1px solid #c8d9e2;
+    border-radius: 0.75rem;
+    padding: 0.85rem 1.1rem;
+    box-shadow: 0 4px 18px rgba(15, 45, 58, 0.15);
+    max-width: 330px;
+    display: none;
+    font-size: 0.84rem;
+  }
+  .map-inspector h4 {
+    margin: 0 0 0.35rem;
+    color: #0f2d3a;
+    font-size: 0.95rem;
+  }
+  .inspector-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.15rem 0;
+  }
+  .inspector-row span.label {
+    color: #5d717d;
+  }
+  .inspector-row span.val {
+    font-weight: 700;
+    color: #0f2d3a;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="sidebar-backdrop" id="sidebar_backdrop"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h1>SAMHI Machine Learning Forecast</h1>
+      <button class="sidebar-close-btn" id="sidebar_close_btn" type="button" title="Close Controls">&times;</button>
+    </div>
+    <p class="muted" style="margin: 0 0 0.8rem; font-size: 0.84rem;">
+      Machine learning forecasts and multi-year forward projections predicting mental health need across English and Lincolnshire LSOAs.
+      SAMHI range -2 to +6.
+    </p>
+
+    <!-- Geographic Scope Selection -->
+    <div class="control">
+      <label style="font-weight:700; font-size:0.86rem; margin-bottom:0.35rem; display:block;">Geographic Scope</label>
+      <div class="radio-group" id="scope_group">
+        <label><input type="radio" name="scope" value="lincolnshire" checked> Lincolnshire (435 LSOAs)</label>
+        <label><input type="radio" name="scope" value="national"> England National (32k LSOAs)</label>
+      </div>
+    </div>
+
+    <!-- District Filter -->
+    <div class="control" id="district_control_wrap">
+      <label for="district_select" style="font-weight:700; font-size:0.86rem; margin-bottom:0.35rem; display:block;">Local Authority District</label>
+      <select id="district_select" style="width:100%; padding:0.45rem 0.6rem; border-radius:0.5rem; border:1px solid #b8ccd6; font-size:0.88rem; background:#fff;">
+        <option value="All">All Districts</option>
+      </select>
+    </div>
+
+    <!-- Evaluation Experiment -->
+    <div class="control">
+      <label style="font-weight:700; font-size:0.86rem; margin-bottom:0.35rem; display:block;">Evaluation Experiment</label>
+      <div class="radio-group" id="experiment_group">
+        <label><input type="radio" name="experiment_set" value="1" checked> COVID-era stress test (2020-2022)</label>
+        <label><input type="radio" name="experiment_set" value="2"> Pre-COVID benchmark (2018-2019)</label>
+      </div>
+    </div>
+
+    <!-- Target Horizon Year -->
+    <div class="control">
+      <label style="font-weight:700; font-size:0.86rem; margin-bottom:0.35rem; display:block;">Target Year Horizon</label>
+      <div style="font-size:0.72rem; color:#5c707d; margin-bottom:0.25rem; font-weight:600;">Future Forward Projections:</div>
+      <div class="radio-group" id="proj_year_group" style="margin-bottom:0.45rem;">
+        {% for yr in projection_years %}
+          <label><input type="radio" name="year" value="{{ yr }}" {% if yr == default_year %}checked{% endif %}> {{ yr }} <span class="badge-proj">EST</span></label>
+        {% endfor %}
+      </div>
+      <div style="font-size:0.72rem; color:#5c707d; margin-bottom:0.25rem; font-weight:600;">Historical Test (Ground Truth Available):</div>
+      <div class="radio-group" id="test_year_group_1">
+        {% for yr in test_years %}
+          <label><input type="radio" name="year" value="{{ yr }}"> {{ yr }}</label>
+        {% endfor %}
+      </div>
+      <div class="radio-group" id="test_year_group_2" style="display:none;">
+        {% for yr in pre_covid_test_years %}
+          <label><input type="radio" name="year" value="{{ yr }}"> {{ yr }}</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Model Selector -->
+    <div class="control">
+      <label for="model_select" style="font-weight:700; font-size:0.86rem; margin-bottom:0.35rem; display:block;">Machine Learning Model</label>
+      <select id="model_select" style="width:100%; padding:0.45rem 0.6rem; border-radius:0.5rem; border:1px solid #b8ccd6; font-size:0.88rem; background:#fff;">
+                <option value="pred_multimodal_elasticnet" selected>Multimodal ElasticNet (Top Performer)</option>
+        <option value="pred_stacking_ensemble_(super_learner)">Stacking Ensemble (Super Learner)</option>
+        <option value="pred_multimodal_lightgbm">Multimodal LightGBM (Fast Trees)</option>
+        <option value="pred_multimodal_catboost">Multimodal CatBoost (Oblivious Trees)</option>
+        <option value="pred_multimodal_xgboost">Multimodal XGBoost</option>
+        <option value="pred_explainable_boosting_machine_(ebm)">Explainable Boosting Machine (Glass-Box EBM)</option>
+        <option value="pred_multimodal_extra-trees">Multimodal Extra-Trees</option>
+        <option value="pred_multimodal_random_forest">Multimodal Random Forest</option>
+        <option value="pred_multimodal_ridge">Multimodal Ridge Regression</option>
+        <option value="pred_ar_baseline_persistence">Naive Persistence (t-1 Baseline)</option>
+        <option value="pred_ar_baseline_momentum_drift">Naive Momentum Drift Baseline</option>
+      </select>
+    </div>
+
+    <!-- Map Display Mode -->
+    <div class="control">
+      <label style="font-weight:700; font-size:0.86rem; margin-bottom:0.35rem; display:block;">Map Layer Mode</label>
+      <div class="radio-group" id="display_mode_group">
+        <label><input type="radio" name="display_mode" value="pred" checked> <span id="lbl_mode_pred">Predicted SAMHI</span></label>
+        <label id="opt_mode_actual"><input type="radio" name="display_mode" value="actual"> Actual SAMHI</label>
+        <label id="opt_mode_err"><input type="radio" name="display_mode" value="err"> Prediction Error (Predicted − Actual)</label>
+        <label id="opt_mode_change" style="display:none;"><input type="radio" name="display_mode" value="change"> Change vs 2022</label>
+        <label><input type="radio" name="display_mode" value="direction"> Direction of Change</label>
+      </div>
+      <div id="mode_help" style="font-size:0.72rem; color:#5c707d; margin-top:0.35rem; line-height:1.3;">
+        Future layers show model projections; observed prediction error is available only for historical test years.
+      </div>
+    </div>
+
+    <!-- Live Performance / Projection Scorecards -->
+    <div class="control">
+      <label id="kpi_title" style="font-weight:700; font-size:0.86rem; margin-bottom:0.2rem; display:block;">Performance Scorecard</label>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-val" id="kpi_1">--</div>
+          <div class="kpi-lbl" id="kpi_lbl_1">R² Score</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" id="kpi_2">--</div>
+          <div class="kpi-lbl" id="kpi_lbl_2">Mean Abs Error</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" id="kpi_3">--</div>
+          <div class="kpi-lbl" id="kpi_lbl_3">Directional Acc.</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" id="kpi_4">--</div>
+          <div class="kpi-lbl" id="kpi_lbl_4">RMSE</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Collapsible SHAP Feature Importance -->
+    <details class="control">
+      <summary style="font-weight:700; cursor:pointer;"><strong>Top Predictive Drivers (<span id="shap_method_label">ElasticNet LinearSHAP</span>)</strong></summary>
+      <div style="margin-top:0.4rem;">
+        <table class="shap-table" id="shap_table">
+          <thead>
+            <tr><th>Feature</th><th>Domain</th><th>Impact %</th></tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="3" style="text-align:center;">Loading SHAP importances...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <!-- Map Transparency & Urban/Rural Controls -->
+    <div class="control">
+      <label style="font-weight:700; font-size:0.86rem; margin-bottom:0.35rem; display:block;">Map Settings</label>
+      <div style="margin-bottom:0.45rem;">
+        <label style="font-size:0.82rem; cursor:pointer;"><input id="filter_urban" type="checkbox" checked> Show Urban LSOAs</label><br>
+        <label style="font-size:0.82rem; cursor:pointer;"><input id="filter_rural" type="checkbox" checked> Show Rural LSOAs</label>
+      </div>
+      <label for="opacity_slider" style="font-size:0.78rem; color:#5c707d; display:block; margin-bottom:2px;">Layer Opacity</label>
+      <input id="opacity_slider" type="range" min="0.1" max="1.0" step="0.05" value="0.85" style="width:100%;">
+    </div>
+
+    <!-- Publication-quality map export -->
+    <div class="control">
+      <label style="font-weight:700; font-size:0.86rem; margin-bottom:0.35rem; display:block;">Map Export</label>
+      <button id="export_map_btn" type="button" style="width:100%; padding:0.5rem 0.65rem; border:0; border-radius:0.5rem; background:#0c7da0; color:#fff; font-weight:700; cursor:pointer;">Download 300 DPI PNG</button>
+      <button id="export_pdf_btn" type="button" style="width:100%; margin-top:0.35rem; padding:0.5rem 0.65rem; border:1px solid #0c7da0; border-radius:0.5rem; background:#fff; color:#0c7da0; font-weight:700; cursor:pointer;">Download Map PDF</button>
+      <div id="export_map_status" style="font-size:0.72rem; color:#5c707d; margin-top:0.35rem; line-height:1.3;">Exports the current map values, and legend as a high-resolution image.</div>
+    </div>
+  </aside>
+
+  <main class="map-wrap">
+    <button class="mobile-sidebar-toggle" id="mobile_sidebar_toggle" type="button">☰ Controls & KPIs</button>
+    <div class="map-shell">
+      <div id="map"></div>
+      
+      <!-- Interactive Area Inspector Card -->
+      <div class="map-inspector" id="map_inspector">
+        <h4 id="inspector_title">LSOA Inspection</h4>
+        <div class="inspector-row"><span class="label">District:</span><span class="val" id="insp_district">--</span></div>
+        <div class="inspector-row"><span class="label" id="lbl_insp_pred">Predicted SAMHI:</span><span class="val" id="insp_pred">--</span></div>
+        <div class="inspector-row" id="row_insp_actual"><span class="label">Actual SAMHI:</span><span class="val" id="insp_actual">--</span></div>
+        <div class="inspector-row" id="row_insp_base" style="display:none;"><span class="label">2022 Baseline:</span><span class="val" id="insp_base">--</span></div>
+        <div class="inspector-row" id="row_insp_err"><span class="label">Residual (Error):</span><span class="val" id="insp_err">--</span></div>
+        <div class="inspector-row" id="row_insp_ci" style="display:none;"><span class="label">95% Projection CI:</span><span class="val" id="insp_ci" style="font-size:0.76rem;">--</span></div>
+        <div class="inspector-row" id="row_insp_decile" style="display:none;"><span class="label">Projected Decile:</span><span class="val" id="insp_decile">--</span></div>
+        <div class="inspector-row"><span class="label" id="lbl_insp_dir">Change Direction:</span><span class="val" id="insp_direction">--</span></div>
+      </div>
+    </div>
+  </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  // GeoJSON Paths
+  const GEOJSON_LINCS = "/datasets/{{ geojson_lincolnshire }}";
+  const GEOJSON_ENGLAND = "/datasets/{{ geojson_england }}";
+
+  // State
+  let currentScope = "lincolnshire";
+  let currentYear = {{ default_year }};
+  let currentModel = "pred_multimodal_elasticnet";
+  let currentExperimentSet = 1;
+  let currentDisplayMode = "pred";
+  let currentDistrict = "All";
+  let currentOpacity = 0.85;
+  let isProjectionMode = currentYear >= 2023;
+
+  let predictionsData = {};
+  let metricsData = [];
+  let projSummaries = [];
+  let shapMethod = "ElasticNet LinearSHAP";
+  let geojsonData = null;
+  let geojsonLayer = null;
+
+  // Map Initialization (OpenStreetMap)
+  const map = L.map("map", {
+    zoomControl: false,
+    preferCanvas: true
+  }).setView([53.2307, -0.5406], 9);
+
+  L.control.zoom({ position: "topright" }).addTo(map);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    crossOrigin: true,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+
+  // Floating Legend Control
+  const legendControl = L.control({ position: "bottomright" });
+  legendControl.onAdd = function() {
+    const div = L.DomUtil.create("div", "info legend");
+    div.id = "map_legend";
+    div.style.background = "rgba(255,255,255,0.92)";
+    div.style.padding = "8px 12px";
+    div.style.borderRadius = "8px";
+    div.style.border = "1px solid #c8d9e2";
+    div.style.boxShadow = "0 2px 8px rgba(0,0,0,0.12)";
+    div.style.fontSize = "11px";
+    div.style.lineHeight = "1.3";
+    div.innerHTML = "<strong>Loading legend...</strong>";
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+    return div;
+  };
+  legendControl.addTo(map);
+
+  // Inspector card elements
+  const inspector = document.getElementById("map_inspector");
+  const inspTitle = document.getElementById("inspector_title");
+  const inspDistrict = document.getElementById("insp_district");
+  const inspPred = document.getElementById("insp_pred");
+  const inspActual = document.getElementById("insp_actual");
+  const inspBase = document.getElementById("insp_base");
+  const inspErr = document.getElementById("insp_err");
+  const inspCI = document.getElementById("insp_ci");
+  const inspDecile = document.getElementById("insp_decile");
+  const inspDir = document.getElementById("insp_direction");
+
+  function updateModeOptions() {
+    isProjectionMode = currentYear >= 2023;
+    const optActual = document.getElementById("opt_mode_actual");
+    const optErr = document.getElementById("opt_mode_err");
+    const optChange = document.getElementById("opt_mode_change");
+    const lblPred = document.getElementById("lbl_mode_pred");
+    const rowActual = document.getElementById("row_insp_actual");
+    const rowBase = document.getElementById("row_insp_base");
+    const rowErr = document.getElementById("row_insp_err");
+    const rowCI = document.getElementById("row_insp_ci");
+    const rowDecile = document.getElementById("row_insp_decile");
+
+    if (isProjectionMode) {
+      lblPred.textContent = "Projected SAMHI";
+      optActual.style.display = "none";
+      optErr.style.display = "none";
+      optChange.style.display = "inline-block";
+      rowActual.style.display = "none";
+      rowErr.style.display = "none";
+      rowBase.style.display = "flex";
+      rowCI.style.display = "flex";
+      rowDecile.style.display = "flex";
+      document.getElementById("mode_help").textContent = "Future layers show model projections. Prediction Error is unavailable because observed 2023–2025 SAMHI outcomes do not yet exist.";
+      if (currentDisplayMode === "actual" || currentDisplayMode === "err") {
+        currentDisplayMode = "pred";
+        document.querySelector("input[name='display_mode'][value='pred']").checked = true;
+      }
+    } else {
+      lblPred.textContent = "Predicted SAMHI";
+      optActual.style.display = "inline-block";
+      optErr.style.display = "inline-block";
+      optChange.style.display = "none";
+      rowActual.style.display = "flex";
+      rowErr.style.display = "flex";
+      rowBase.style.display = "none";
+      rowCI.style.display = "none";
+      rowDecile.style.display = "none";
+      document.getElementById("mode_help").textContent = "Historical test years have observed SAMHI, so Prediction Error means Predicted − Actual. Direction compares the prediction with the previous year.";
+      if (currentDisplayMode === "change") {
+        currentDisplayMode = "pred";
+        document.querySelector("input[name='display_mode'][value='pred']").checked = true;
+      }
+    }
+  }
+
+  function getSelectedModelLabel() {
+    const option = document.querySelector(`#model_select option[value="${currentModel}"]`);
+    return option ? option.textContent.replace(/\s*\([^)]*\)/g, "").trim() : currentModel;
+  }
+
+  function getSelectedPrediction(p) {
+    const value = p ? p[currentModel] : null;
+    return value !== undefined && value !== null && Number.isFinite(Number(value)) ? Number(value) : null;
+  }
+
+  function getSelectedError(p) {
+    if (!p || isProjectionMode) return null;
+    const errorColumn = currentModel.replace("pred_", "err_");
+    const value = p[errorColumn];
+    return value !== undefined && value !== null && Number.isFinite(Number(value)) ? Number(value) : null;
+  }
+
+  function getChangeVs2022(p) {
+    if (!p) return null;
+    if (isProjectionMode) {
+      const prediction = getSelectedPrediction(p);
+      const baseline = Number(p.baseline_2022);
+      return prediction !== null && Number.isFinite(baseline) ? prediction - baseline : null;
+    }
+    const value = p.actual_change;
+    return value !== undefined && value !== null && Number.isFinite(Number(value)) ? Number(value) : null;
+  }
+
+  function getProjectionSuffix() {
+    return currentModel.replace(/^pred_/, "");
+  }
+
+  function getProjectionDecile(p) {
+    if (!p || !isProjectionMode) return null;
+    const key = currentModel === "pred_multimodal_elasticnet"
+      ? "projected_decile"
+      : `projected_decile_${getProjectionSuffix()}`;
+    const value = p[key];
+    return value !== undefined && value !== null && Number.isFinite(Number(value)) ? Number(value) : null;
+  }
+
+  function getProjectionCI(p) {
+    if (!p || !isProjectionMode) return null;
+    const suffix = currentModel === "pred_multimodal_elasticnet" ? "" : `_${getProjectionSuffix()}`;
+    const lower = p[`ci_lower_95${suffix}`];
+    const upper = p[`ci_upper_95${suffix}`];
+    if (lower === undefined || upper === undefined || lower === null || upper === null) return null;
+    return Number.isFinite(Number(lower)) && Number.isFinite(Number(upper))
+      ? [Number(lower), Number(upper)]
+      : null;
+  }
+
+  function formatSigned(value, digits = 3) {
+    if (value === null || value === undefined || !Number.isFinite(Number(value))) return "N/A";
+    const number = Number(value);
+    return number > 0 ? `+${number.toFixed(digits)}` : number.toFixed(digits);
+  }
+
+  function directionText(change) {
+    if (change === null || change === undefined || !Number.isFinite(Number(change))) return "N/A";
+    const number = Number(change);
+    if (Math.abs(number) < 0.0005) return "→ No material change (0.000)";
+    return number > 0 ? `▲ +${number.toFixed(3)}` : `▼ ${number.toFixed(3)}`;
+  }
+
+  function directionBadgeHtml(change) {
+    if (change === null || change === undefined || !Number.isFinite(Number(change))) return "N/A";
+    const number = Number(change);
+    if (Math.abs(number) < 0.0005) return `<span class="badge-tag" style="background:#eef2f3; color:#506a78;">→ No material change (0.000)</span>`;
+    return number > 0
+      ? `<span class="badge-tag badge-pos">▲ Worsening (+${number.toFixed(3)})</span>`
+      : `<span class="badge-tag badge-neg">▼ Improving (${number.toFixed(3)})</span>`;
+  }
+
+  function getProjectionSummaryFromMap() {
+    if (!isProjectionMode) return null;
+    const rows = Object.values(predictionsData || {});
+    const validRows = rows.filter(p => getSelectedPrediction(p) !== null);
+    if (!validRows.length) return null;
+    const predictions = validRows.map(p => getSelectedPrediction(p));
+    const changes = validRows.map(p => getChangeVs2022(p)).filter(v => v !== null);
+    const sortedPredictions = predictions.slice().sort((a, b) => a - b);
+    const highRisk = validRows.filter(p => {
+      const suppliedDecile = getProjectionDecile(p);
+      if (suppliedDecile !== null) return suppliedDecile >= 9;
+      const rank = sortedPredictions.indexOf(getSelectedPrediction(p));
+      const decile = Math.min(10, Math.floor((rank / predictions.length) * 10) + 1);
+      return decile >= 9;
+    }).length;
+    return {
+      Mean_Projected_SAMHI: predictions.reduce((a, b) => a + b, 0) / predictions.length,
+      Mean_Change_vs_2022: changes.length ? changes.reduce((a, b) => a + b, 0) / changes.length : null,
+      Pct_Areas_Worsening: changes.length ? changes.filter(v => v > 0).length / changes.length * 100 : null,
+      Pct_Areas_Improving: changes.length ? changes.filter(v => v < 0).length / changes.length * 100 : null,
+      High_Risk_Decile_9_10_Count: highRisk,
+      Total_LSOAs: validRows.length
+    };
+  }
+
+  // Fetch Metrics & SHAP
+  function loadMetrics() {
+    fetch(`/api/samhi_ml/metrics?scope=${currentScope}&experiment_set=${currentExperimentSet}&model=${encodeURIComponent(currentModel)}`)
+      .then(res => res.json())
+      .then(data => {
+        metricsData = data.metrics || [];
+        projSummaries = data.projections_summary || [];
+        shapMethod = data.shap_method
+          ? `${data.shap_model || "Selected model"} ${data.shap_method}`
+          : (data.shap_model || "Selected model");
+        document.getElementById("shap_method_label").textContent = shapMethod;
+        updateKpiDisplay();
+        renderShapTable(data.shap_features || []);
+      })
+      .catch(err => console.error("Error loading metrics:", err));
+  }
+
+  function updateKpiDisplay() {
+    isProjectionMode = currentYear >= 2023;
+    const titleEl = document.getElementById("kpi_title");
+    const lbl1 = document.getElementById("kpi_lbl_1");
+    const lbl2 = document.getElementById("kpi_lbl_2");
+    const lbl3 = document.getElementById("kpi_lbl_3");
+    const lbl4 = document.getElementById("kpi_lbl_4");
+    const val1 = document.getElementById("kpi_1");
+    const val2 = document.getElementById("kpi_2");
+    const val3 = document.getElementById("kpi_3");
+    const val4 = document.getElementById("kpi_4");
+
+    if (isProjectionMode) {
+      titleEl.textContent = `Forward Projection Summary (${currentYear}) — ${getSelectedModelLabel()}`;
+      lbl1.textContent = "Mean Projected";
+      lbl2.textContent = "Change vs 2022";
+      lbl3.textContent = "% Worsening";
+      lbl4.textContent = "High Risk Count";
+
+      const mapSummary = getProjectionSummaryFromMap();
+      const apiSummary = projSummaries.find(p => Number(p.Year) === currentYear);
+      const projRec = mapSummary || apiSummary;
+      if (projRec) {
+        val1.textContent = projRec.Mean_Projected_SAMHI !== undefined ? projRec.Mean_Projected_SAMHI.toFixed(3) : "--";
+        const chg = projRec.Mean_Change_vs_2022;
+        val2.textContent = chg !== null && chg !== undefined ? formatSigned(chg) : "--";
+        val3.textContent = projRec.Pct_Areas_Worsening !== null && projRec.Pct_Areas_Worsening !== undefined ? `${projRec.Pct_Areas_Worsening.toFixed(1)}%` : "--";
+        val4.textContent = projRec.High_Risk_Decile_9_10_Count !== undefined ? projRec.High_Risk_Decile_9_10_Count.toString() : "--";
+      } else {
+        val1.textContent = "--"; val2.textContent = "--"; val3.textContent = "--"; val4.textContent = "--";
+      }
+    } else {
+      const experimentLabel = currentExperimentSet === 2 ? "Pre-COVID" : "COVID-era";
+      titleEl.textContent = `${experimentLabel} Model Test Performance (${currentYear})`;
+      lbl1.textContent = "R² Score";
+      lbl2.textContent = "Mean Abs Error";
+      lbl3.textContent = "Directional Acc.";
+      lbl4.textContent = "RMSE";
+
+      const modelKeyToName = {
+        "pred_multimodal_elasticnet": "Multimodal ElasticNet",
+        "pred_stacking_ensemble_(super_learner)": "Stacking Ensemble (Super Learner)",
+        "pred_multimodal_lightgbm": "Multimodal LightGBM",
+        "pred_multimodal_catboost": "Multimodal CatBoost",
+        "pred_multimodal_xgboost": "Multimodal XGBoost",
+        "pred_explainable_boosting_machine_(ebm)": "Explainable Boosting Machine (EBM)",
+        "pred_multimodal_extra-trees": "Multimodal Extra-Trees",
+        "pred_multimodal_random_forest": "Multimodal Random Forest",
+        "pred_multimodal_ridge": "Multimodal Ridge",
+        "pred_ar_baseline_persistence": "AR Baseline (Persistence)",
+        "pred_ar_baseline_momentum_drift": "AR Baseline (Momentum Drift)"
+      };
+      const targetModel = modelKeyToName[currentModel] || "Multimodal ElasticNet";
+      const splitTarget = `Test (${currentYear})`;
+
+      const record = metricsData.find(m => m.Model === targetModel && (m.Split === splitTarget || m.Split.includes(String(currentYear))));
+      if (record) {
+        val1.textContent = record.R2 !== undefined ? record.R2.toFixed(3) : "--";
+        val2.textContent = record.MAE !== undefined ? record.MAE.toFixed(3) : "--";
+        val3.textContent = record["Dir_Acc_%"] !== undefined ? `${record["Dir_Acc_%"].toFixed(1)}%` : "--";
+        val4.textContent = record.RMSE !== undefined ? record.RMSE.toFixed(3) : "--";
+      } else {
+        const agg = metricsData.find(m => m.Model === targetModel && m.Split.includes("Aggregate"));
+        if (agg) {
+          val1.textContent = agg.R2 ? agg.R2.toFixed(3) : "--";
+          val2.textContent = agg.MAE ? agg.MAE.toFixed(3) : "--";
+          val3.textContent = agg["Dir_Acc_%"] ? `${agg["Dir_Acc_%"].toFixed(1)}%` : "--";
+          val4.textContent = agg.RMSE ? agg.RMSE.toFixed(3) : "--";
+        }
+      }
+    }
+  }
+
+  // Comprehensive Plain-English Metadata for Machine Learning Features
+  const FEATURE_METADATA = {
+    "rolling_max_3yr": {
+      label: "3-Year Peak Demand Level",
+      desc: "Highest mental health need recorded in this area over the past 3 years",
+      domain: "Temporal History"
+    },
+    "rolling_mean_3yr": {
+      label: "3-Year Moving Average",
+      desc: "Smoothed multi-year baseline demand, filtering out single-year spikes",
+      domain: "Temporal History"
+    },
+    "rolling_min_3yr": {
+      label: "3-Year Floor Level",
+      desc: "Lowest mental health need recorded over the prior 3 years",
+      domain: "Temporal History"
+    },
+    "rolling_std_3yr": {
+      label: "3-Year Demand Volatility",
+      desc: "Instability or annual swings in localized mental health need",
+      domain: "Temporal History"
+    },
+    "lag_1": {
+      label: "Previous Year SAMHI Level (t-1)",
+      desc: "The most recently recorded baseline mental health index",
+      domain: "Temporal History"
+    },
+    "lag_2": {
+      label: "2 Years Prior SAMHI Level (t-2)",
+      desc: "Historical demand level 2 years before target forecast",
+      domain: "Temporal History"
+    },
+    "lag_3": {
+      label: "3 Years Prior SAMHI Level (t-3)",
+      desc: "Historical demand level 3 years before target forecast",
+      domain: "Temporal History"
+    },
+    "delta_1": {
+      label: "1-Year Momentum / Trajectory",
+      desc: "Direction and pace of change from last year (t-1 minus t-2)",
+      domain: "Temporal History"
+    },
+    "delta_2": {
+      label: "Prior 2-Year Trajectory",
+      desc: "Historical momentum between year t-2 and year t-3",
+      domain: "Temporal History"
+    },
+    "acceleration": {
+      label: "Trend Acceleration",
+      desc: "Rate at which demand is accelerating or decelerating",
+      domain: "Temporal History"
+    },
+    "decile_lag_1": {
+      label: "Prior Year National Risk Decile",
+      desc: "Relative rank (Decile 1 = lowest need, Decile 10 = highest need)",
+      domain: "Temporal History"
+    },
+    "spatial_lag_1": {
+      label: "Bordering Areas' Need (Spillover)",
+      desc: "Average SAMHI index across all physically adjacent neighboring LSOAs",
+      domain: "Geography & Access"
+    },
+    "spatial_delta_1": {
+      label: "Bordering Areas' Trend Direction",
+      desc: "Whether immediate neighboring neighbourhoods are worsening or improving",
+      domain: "Geography & Access"
+    },
+    "lad_mean_samhi_lag_1": {
+      label: "District Authority Average Need",
+      desc: "Overall baseline demand across the parent Local Authority (e.g. Lincoln, Boston)",
+      domain: "Geography & Access"
+    },
+    "pct_disability_limited": {
+      label: "Chronic Illness / Disability Rate (%)",
+      desc: "% of residents whose daily activities are limited by long-term health problems",
+      domain: "Demographics"
+    },
+    "imd_2019_score": {
+      label: "Index of Multiple Deprivation (2019)",
+      desc: "Overall government deprivation score combining income, crime, housing",
+      domain: "Deprivation"
+    },
+    "imd_2025_decile": {
+      label: "Projected Deprivation Decile (2025)",
+      desc: "Updated 2025 relative deprivation decile ranking for England",
+      domain: "Deprivation"
+    },
+    "hosp_car_time": {
+      label: "Hospital Car Travel Time",
+      desc: "Average driving time in minutes to nearest acute secondary hospital",
+      domain: "Healthcare Access"
+    },
+    "hosp_pt_time": {
+      label: "Hospital Public Transit Time",
+      desc: "Travel time by public bus or train to nearest acute hospital",
+      domain: "Healthcare Access"
+    },
+    "gp_car_time": {
+      label: "GP Practice Drive Time",
+      desc: "Average driving time in minutes to nearest primary care GP surgery",
+      domain: "Healthcare Access"
+    },
+    "gp_pt_time": {
+      label: "GP Practice Transit Time",
+      desc: "Public transit travel time to nearest primary care GP surgery",
+      domain: "Healthcare Access"
+    },
+    "no_car_pct": {
+      label: "Households Without a Car (%)",
+      desc: "% of households with zero vehicles (physical transport barrier)",
+      domain: "Transport Poverty"
+    },
+    "isolation_scale": {
+      label: "Rural Remoteness Scale (1-6)",
+      desc: "Graduated scale from 1 (Major Urban Core) to 6 (Rural Dispersed/Isolated)",
+      domain: "Geography & Access"
+    },
+    "isolation_normalized": {
+      label: "Normalized Remoteness Score",
+      desc: "Remoteness index scaled between 0.0 (dense urban) and 1.0 (deep rural)",
+      domain: "Geography & Access"
+    },
+    "is_rural": {
+      label: "Rural Classification Flag",
+      desc: "Binary indicator identifying whether area is rural (1) or urban (0)",
+      domain: "Geography & Access"
+    },
+    "unemployment_rate": {
+      label: "Unemployment Rate (%)",
+      desc: "Proportion of working-age adults receiving unemployment benefits",
+      domain: "Deprivation"
+    },
+    "pct_social_grade_de": {
+      label: "Low-Income Social Grade DE (%)",
+      desc: "% of residents in routine occupations, semi-skilled work, or state support",
+      domain: "Deprivation"
+    },
+    "pension_credit_rate": {
+      label: "Pension Credit Rate",
+      desc: "Rate per 1,000 pensioners receiving means-tested income guarantees",
+      domain: "Deprivation"
+    },
+    "pct_aged_65_plus": {
+      label: "Older Adults Aged 65+ (%)",
+      desc: "Percentage of resident population aged 65 and over",
+      domain: "Demographics"
+    },
+    "pct_no_qualifications": {
+      label: "No Formal Qualifications (%)",
+      desc: "Percentage of adults with no recognized educational qualifications",
+      domain: "Demographics"
+    },
+    "one_person_household_pct": {
+      label: "Single Occupancy Living Alone (%)",
+      desc: "Percentage of households where an individual lives alone (isolation risk)",
+      domain: "Household Structure"
+    },
+    "lone_parent_pct": {
+      label: "Single Parent Families (%)",
+      desc: "Percentage of families headed by a lone parent with dependent children",
+      domain: "Household Structure"
+    },
+    "avg_download_speed": {
+      label: "Broadband Download Speed (Mbps)",
+      desc: "Average internet speed (proxy for digital exclusion & telehealth access)",
+      domain: "Digital Infrastructure"
+    }
+  };
+
+  let showAllShap = false;
+  let cachedShapFeatures = [];
+
+  function renderShapTable(shapFeatures) {
+    if (shapFeatures) cachedShapFeatures = shapFeatures;
+    const tbody = document.querySelector("#shap_table tbody");
+    if (!tbody) return;
+    if (!cachedShapFeatures || cachedShapFeatures.length === 0) {
+      tbody.innerHTML = "<tr><td colspan='3' style='text-align:center;'>No SHAP data available</td></tr>";
+      return;
+    }
+    const featuresToDisplay = showAllShap ? cachedShapFeatures : cachedShapFeatures.slice(0, 8);
+    
+    tbody.innerHTML = featuresToDisplay.map(f => {
+      const meta = FEATURE_METADATA[f.feature] || {
+        label: f.feature.replace(/_/g, " "),
+        desc: "Auxiliary predictive feature",
+        domain: (f.domain || "").replace(/^[0-9]_/, "").replace(/_/g, " ")
+      };
+      
+      return `<tr>
+        <td style="padding:0.4rem 0.35rem;">
+          <div style="font-weight:700; color:#0f2d3a; font-size:0.82rem;" title="${meta.desc}">
+            ${meta.label}
+          </div>
+          <div style="font-size:0.68rem; color:#506a78; line-height:1.2; margin-top:0.15rem;">
+            ${meta.desc}
+          </div>
+        </td>
+        <td style="vertical-align:top; padding-top:0.45rem;">
+          <span style="display:inline-block; font-size:0.65rem; font-weight:600; padding:0.15rem 0.4rem; border-radius:0.25rem; background:#e3edf2; color:#184a5a; white-space:nowrap;">
+            ${meta.domain}
+          </span>
+        </td>
+        <td style="vertical-align:top; padding-top:0.45rem; text-align:right;">
+          <div style="font-weight:800; font-size:0.84rem; color:#0f2d3a;">${f.importance_pct.toFixed(1)}%</div>
+          <div style="background:#e3edf2; border-radius:3px; height:4px; width:45px; margin-left:auto; margin-top:0.2rem; overflow:hidden;">
+            <div style="background:#2a6f86; height:100%; width:${Math.min(f.importance_pct * 3.2, 100)}%;"></div>
+          </div>
+        </td>
+      </tr>`;
+    }).join("");
+
+    // Add toggle button row if more than 8 features
+    if (cachedShapFeatures.length > 8) {
+      const toggleText = showAllShap ? "▲ Show Top 8 Only" : `▼ Show All ${cachedShapFeatures.length} Features`;
+      tbody.innerHTML += `<tr>
+        <td colspan="3" style="text-align:center; padding:0.4rem 0;">
+          <button type="button" id="shap_toggle_btn" style="background:none; border:none; color:#2a6f86; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:underline;">
+            ${toggleText}
+          </button>
+        </td>
+      </tr>`;
+      const btn = document.getElementById("shap_toggle_btn");
+      if (btn) {
+        btn.onclick = () => {
+          showAllShap = !showAllShap;
+          renderShapTable();
+        };
+      }
+    }
+  }
+
+  // Fetch Predictions / Projections & Load Map Layer
+  function loadPredictionsAndRenderMap() {
+    updateModeOptions();
+    const url = `/api/samhi_ml/predictions?scope=${currentScope}&year=${currentYear}&experiment_set=${currentExperimentSet}&district=${encodeURIComponent(currentDistrict)}`;
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        predictionsData = data.predictions || {};
+        populateDistrictDropdown(data.districts || []);
+        loadGeoJSON();
+        updateKpiDisplay();
+      })
+      .catch(err => console.error("Error loading predictions:", err));
+  }
+
+  function populateDistrictDropdown(districts) {
+    const sel = document.getElementById("district_select");
+    const existing = sel.value;
+    sel.innerHTML = districts.map(d => `<option value="${d}">${d}</option>`).join("");
+    if (districts.includes(existing)) {
+      sel.value = existing;
+    } else {
+      sel.value = "All";
+    }
+  }
+
+  function loadGeoJSON() {
+    const targetGeoJSONUrl = currentScope === "lincolnshire" ? GEOJSON_LINCS : GEOJSON_ENGLAND;
+    
+    if (!geojsonData || geojsonData._loadedScope !== currentScope) {
+      document.getElementById("map_legend").innerHTML = "<strong>Loading map boundaries...</strong>";
+      fetch(targetGeoJSONUrl)
+        .then(res => res.json())
+        .then(data => {
+          geojsonData = data;
+          geojsonData._loadedScope = currentScope;
+          renderGeoJSONLayer();
+        })
+        .catch(err => {
+          console.error("Failed to load GeoJSON:", err);
+          document.getElementById("map_legend").innerHTML = `<span style="color:red;">Failed to load map data</span>`;
+        });
+    } else {
+      renderGeoJSONLayer();
+    }
+  }
+
+  function renderGeoJSONLayer() {
+    if (geojsonLayer) {
+      map.removeLayer(geojsonLayer);
+      geojsonLayer = null;
+    }
+    if (!geojsonData) return;
+
+    let featuresToRender = geojsonData.features;
+    if (currentDistrict && currentDistrict !== "All") {
+      featuresToRender = featuresToRender.filter(feat => {
+        const code = getFeatureCode(feat);
+        const p = predictionsData[code];
+        return p && p.district === currentDistrict;
+      });
+    }
+
+    const { colorScale, minVal, maxVal } = buildColorScale();
+    updateLegendDisplay(minVal, maxVal);
+
+    geojsonLayer = L.geoJSON({ type: "FeatureCollection", features: featuresToRender }, {
+      style: (feature) => styleFeature(feature, colorScale),
+      onEachFeature: onEachFeature
+    }).addTo(map);
+
+    if (featuresToRender.length > 0) {
+      try {
+        const bounds = geojsonLayer.getBounds();
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [20, 20], maxZoom: 13 });
+        }
+      } catch (e) {}
+    }
+  }
+
+  function getFeatureCode(feature) {
+    return feature.properties.LSOA21CD || feature.properties.CODE || feature.properties.lsoa21cd || "";
+  }
+
+  function getValueForFeature(code) {
+    const p = predictionsData[code];
+    if (!p) return null;
+
+    if (currentDisplayMode === "pred") {
+      return getSelectedPrediction(p);
+    } else if (currentDisplayMode === "actual") {
+      return p["actual"];
+    } else if (currentDisplayMode === "err") {
+      return getSelectedError(p);
+    } else if (currentDisplayMode === "change") {
+      return getChangeVs2022(p);
+    } else if (currentDisplayMode === "direction") {
+      return getChangeVs2022(p);
+    }
+    return null;
+  }
+
+  function buildColorScale() {
+    let values = [];
+    for (const code in predictionsData) {
+      const v = getValueForFeature(code);
+      if (v !== null && !isNaN(v)) {
+        values.push(v);
+      }
+    }
+
+    if (values.length === 0) {
+      return { colorScale: () => "#cccccc", minVal: -1, maxVal: 1 };
+    }
+
+    values.sort((a, b) => a - b);
+    const p5 = values[Math.floor(values.length * 0.05)];
+    const p95 = values[Math.floor(values.length * 0.95)];
+
+    if (currentDisplayMode === "direction") {
+      const absMax = Math.max(Math.abs(p5), Math.abs(p95), 0.10);
+      const scale = chroma.scale(["#1a9850", "#d9ef8b", "#ffffbf", "#fee08b", "#d73027"]).domain([-absMax, -absMax/2, 0, absMax/2, absMax]);
+      return { colorScale: (v) => scale(v).hex(), minVal: -absMax, maxVal: absMax };
+    } else if (currentDisplayMode === "err" || currentDisplayMode === "change") {
+      const absMax = Math.max(Math.abs(p5), Math.abs(p95), 0.15);
+      const scale = chroma.scale(["#2b83ba", "#abdda4", "#ffffbf", "#fdae61", "#d7191c"]).domain([-absMax, 0, absMax]);
+      return { colorScale: (v) => scale(v).hex(), minVal: -absMax, maxVal: absMax };
+    } else {
+      const scale = chroma.scale(["#2c7bb6", "#abd9e9", "#ffffbf", "#fdae61", "#d7191c"]).domain([p5, (p5 + p95) / 2, p95]);
+      return { colorScale: (v) => scale(v).hex(), minVal: p5, maxVal: p95 };
+    }
+  }
+
+  function styleFeature(feature, colorScale) {
+    const code = getFeatureCode(feature);
+    const val = getValueForFeature(code);
+
+    if (val === null || val === undefined || isNaN(val)) {
+      return {
+        fillColor: "#e0e0e0",
+        weight: 0.6,
+        opacity: 0.7,
+        color: "#ffffff",
+        fillOpacity: 0.25
+      };
+    }
+
+    return {
+      fillColor: colorScale(val),
+      weight: 0.8,
+      opacity: 0.9,
+      color: "#ffffff",
+      fillOpacity: currentOpacity
+    };
+  }
+
+  function onEachFeature(feature, layer) {
+    const code = getFeatureCode(feature);
+    const p = predictionsData[code] || {};
+    const name = p.name || feature.properties.LSOA21NM || code;
+
+    layer.on({
+      mouseover: (e) => {
+        const l = e.target;
+        l.setStyle({ weight: 2.2, color: "#0f2d3a", fillOpacity: 0.95 });
+        l.bringToFront();
+        updateInspector(code, p, name);
+      },
+      mouseout: (e) => {
+        if (geojsonLayer) {
+          const { colorScale } = buildColorScale();
+          geojsonLayer.resetStyle(e.target);
+          e.target.setStyle(styleFeature(feature, colorScale));
+        }
+      },
+      click: (e) => {
+        updateInspector(code, p, name);
+      }
+    });
+
+    const predVal = getSelectedPrediction(p);
+    const predStr = predVal !== null ? predVal.toFixed(3) : "N/A";
+
+    let actualStr = "N/A";
+    let errStr = "N/A";
+    let dirStr = "N/A";
+    const chg = getChangeVs2022(p);
+
+    if (isProjectionMode) {
+      actualStr = p.baseline_2022 !== undefined && p.baseline_2022 !== null ? p.baseline_2022.toFixed(3) + " (2022 base)" : "N/A";
+      dirStr = directionText(chg);
+    } else {
+      actualStr = p.actual !== undefined && p.actual !== null ? p.actual.toFixed(3) : "N/A";
+      errStr = formatSigned(getSelectedError(p));
+      dirStr = directionText(chg);
+    }
+
+    const errRowHtml = isProjectionMode
+      ? `<div style="display:flex; justify-content:space-between; gap:12px;"><span>Prediction error:</span> <strong>Unavailable (future)</strong></div>`
+      : `<div style="display:flex; justify-content:space-between; gap:12px;"><span>Prediction error:</span> <strong>${errStr}</strong></div>`;
+
+    const tooltipHtml = `
+      <div style="font-size:0.85rem; line-height:1.3;">
+        <strong>${name}</strong><br>
+        <span style="color:#5d717d; font-size:0.75rem;">Code: ${code}</span>
+        <hr style="margin:4px 0; border:0; border-top:1px solid #c8d9e2;">
+        <div style="display:flex; justify-content:space-between; gap:12px;"><span>${isProjectionMode ? "Projected:" : "Predicted:"}</span> <strong>${predStr}</strong></div>
+        <div style="display:flex; justify-content:space-between; gap:12px;"><span>${isProjectionMode ? "2022 baseline:" : "Actual:"}</span> <strong>${actualStr}</strong></div>
+        ${errRowHtml}
+        <div style="display:flex; justify-content:space-between; gap:12px;"><span>Change:</span> <strong>${dirStr}</strong></div>
+      </div>
+    `;
+    layer.bindTooltip(tooltipHtml, {
+      sticky: true,
+      className: "lsoa-tooltip"
+    });
+  }
+
+  function updateInspector(code, p, name) {
+    inspector.style.display = "block";
+    inspTitle.textContent = `${name} (${code})`;
+    inspDistrict.textContent = p.district || "N/A";
+
+    const predVal = getSelectedPrediction(p);
+    inspPred.textContent = predVal !== null ? predVal.toFixed(3) : "N/A";
+
+    if (isProjectionMode) {
+      document.getElementById("lbl_insp_pred").textContent = "Projected SAMHI:";
+      inspBase.textContent = p.baseline_2022 !== undefined && p.baseline_2022 !== null ? p.baseline_2022.toFixed(3) : "N/A";
+      const projectionDecile = getProjectionDecile(p);
+      const projectionCI = getProjectionCI(p);
+      inspDecile.textContent = projectionDecile !== null ? `Decile ${projectionDecile}` : "N/A";
+      inspCI.textContent = projectionCI ? `[${projectionCI[0].toFixed(2)}, ${projectionCI[1].toFixed(2)}]` : "N/A";
+
+      const chg = getChangeVs2022(p);
+      inspDir.innerHTML = directionBadgeHtml(chg);
+    } else {
+      document.getElementById("lbl_insp_pred").textContent = "Predicted SAMHI:";
+      inspActual.textContent = p.actual !== undefined && p.actual !== null ? p.actual.toFixed(3) : "N/A";
+      const errVal = getSelectedError(p);
+      inspErr.textContent = formatSigned(errVal);
+
+      const chg = getChangeVs2022(p);
+      inspDir.innerHTML = directionBadgeHtml(chg);
+    }
+  }
+
+  function downloadPublicationMap(outputFormat = "png", buttonId = "export_map_btn") {
+    const button = document.getElementById(buttonId);
+    const status = document.getElementById("export_map_status");
+    const params = new URLSearchParams({
+      scope: currentScope,
+      year: currentYear.toString(),
+      experiment_set: currentExperimentSet.toString(),
+      model: currentModel,
+      display_mode: currentDisplayMode,
+      district: currentDistrict,
+      dpi: "300",
+      format: outputFormat
+    });
+
+    button.disabled = true;
+    button.style.opacity = "0.65";
+    status.textContent = outputFormat === "pdf" ? "Rendering map PDF..." : "Rendering high-resolution map...";
+    fetch(`/api/samhi_ml/export.png?${params.toString()}`)
+      .then(async response => {
+        if (!response.ok) {
+          let message = "Map export failed.";
+          try {
+            const payload = await response.json();
+            message = payload.error || message;
+          } catch (error) {}
+          throw new Error(message);
+        }
+        return response.blob();
+      })
+      .then(blob => {
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = `samhi_${currentScope}_${currentYear}_${currentDisplayMode}_300dpi.${outputFormat}`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(downloadUrl);
+        status.textContent = outputFormat === "pdf" ? "Map PDF downloaded." : "High-resolution PNG downloaded.";
+      })
+      .catch(error => {
+        console.error("SAMHI map export failed:", error);
+        status.textContent = error.message;
+      })
+      .finally(() => {
+        button.disabled = false;
+        button.style.opacity = "1";
+      });
+  }
+
+  function updateLegendDisplay(minVal, maxVal) {
+    const div = document.getElementById("map_legend");
+    if (!div) return;
+
+    let title = "Predicted SAMHI";
+    if (currentDisplayMode === "direction") {
+      title = isProjectionMode ? "Direction of Change vs 2022" : "Direction of Change vs Previous Year";
+    } else if (isProjectionMode) {
+      title = currentDisplayMode === "change" ? "Change vs 2022 Baseline" : "Projected SAMHI";
+    } else {
+      title = currentDisplayMode === "actual" ? "Actual SAMHI" : (currentDisplayMode === "err" ? "Prediction Error (Predicted − Actual)" : "Predicted SAMHI");
+    }
+
+    let gradient = "linear-gradient(to right, #2c7bb6, #ffffbf, #d7191c)";
+    if (currentDisplayMode === "direction") {
+      gradient = "linear-gradient(to right, #1a9850, #ffffbf, #d73027)";
+    } else if (currentDisplayMode === "err" || currentDisplayMode === "change") {
+      gradient = "linear-gradient(to right, #2b83ba, #ffffbf, #d7191c)";
+    }
+
+    div.innerHTML = `
+      <div style="font-weight:700; margin-bottom:4px;">${title}</div>
+      <div style="width:160px; height:12px; background:${gradient}; border-radius:3px; margin-bottom:3px;"></div>
+      <div style="display:flex; justify-content:space-between; font-size:10px; color:#445763;">
+        <span>${minVal.toFixed(2)}</span>
+        <span>${((minVal + maxVal)/2).toFixed(2)}</span>
+        <span>${maxVal.toFixed(2)}</span>
+      </div>
+    `;
+  }
+
+  // Event Listeners
+  document.querySelectorAll("input[name='experiment_set']").forEach(radio => {
+    radio.addEventListener("change", (e) => {
+      currentExperimentSet = parseInt(e.target.value);
+      const defaultYear = currentExperimentSet === 2 ? 2018 : 2020;
+      document.getElementById("test_year_group_1").style.display = currentExperimentSet === 1 ? "flex" : "none";
+      document.getElementById("test_year_group_2").style.display = currentExperimentSet === 2 ? "flex" : "none";
+      document.querySelectorAll("input[name='year']").forEach(input => {
+        input.checked = parseInt(input.value) === currentYear;
+      });
+      if (currentYear >= 2023 || (currentExperimentSet === 2 && currentYear >= 2020) || (currentExperimentSet === 1 && currentYear < 2020)) {
+        currentYear = defaultYear;
+        document.querySelector(`input[name='year'][value='${currentYear}']`).checked = true;
+      }
+      loadMetrics();
+      loadPredictionsAndRenderMap();
+    });
+  });
+
+  document.querySelectorAll("input[name='scope']").forEach(radio => {
+    radio.addEventListener("change", (e) => {
+      currentScope = e.target.value;
+      currentDistrict = "All";
+      loadMetrics();
+      loadPredictionsAndRenderMap();
+    });
+  });
+
+  document.querySelectorAll("input[name='year']").forEach(radio => {
+    radio.addEventListener("change", (e) => {
+      currentYear = parseInt(e.target.value);
+      loadPredictionsAndRenderMap();
+    });
+  });
+
+  document.getElementById("model_select").addEventListener("change", (e) => {
+    currentModel = e.target.value;
+    loadMetrics();
+    updateKpiDisplay();
+    renderGeoJSONLayer();
+  });
+
+  document.querySelectorAll("input[name='display_mode']").forEach(radio => {
+    radio.addEventListener("change", (e) => {
+      currentDisplayMode = e.target.value;
+      renderGeoJSONLayer();
+    });
+  });
+
+  document.getElementById("district_select").addEventListener("change", (e) => {
+    currentDistrict = e.target.value;
+    renderGeoJSONLayer();
+  });
+
+  document.getElementById("export_map_btn").addEventListener("click", () => downloadPublicationMap("png", "export_map_btn"));
+  document.getElementById("export_pdf_btn").addEventListener("click", () => downloadPublicationMap("pdf", "export_pdf_btn"));
+
+  document.getElementById("opacity_slider").addEventListener("input", (e) => {
+    currentOpacity = parseFloat(e.target.value);
+    if (geojsonLayer) {
+      const { colorScale } = buildColorScale();
+      geojsonLayer.eachLayer(layer => {
+        layer.setStyle(styleFeature(layer.feature, colorScale));
+      });
+    }
+  });
+
+  // Mobile drawer toggle
+  const mobileToggle = document.getElementById("mobile_sidebar_toggle");
+  const sidebar = document.getElementById("sidebar");
+  const backdrop = document.getElementById("sidebar_backdrop");
+  const closeBtn = document.getElementById("sidebar_close_btn");
+
+  if (mobileToggle && sidebar && backdrop) {
+    mobileToggle.addEventListener("click", () => {
+      sidebar.classList.add("open");
+      backdrop.classList.add("open");
+    });
+    backdrop.addEventListener("click", () => {
+      sidebar.classList.remove("open");
+      backdrop.classList.remove("open");
+    });
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => {
+        sidebar.classList.remove("open");
+        backdrop.classList.remove("open");
+      });
+    }
+  }
+
+  // Initial Load
+  loadMetrics();
+  loadPredictionsAndRenderMap();
+});
+</script>
+{% endblock %}
