@@ -304,11 +304,21 @@ document.addEventListener("DOMContentLoaded", () => {
   let geojsonData = null;
   let geojsonLayer = null;
 
+  const MAP_VIEWS = {
+    lincolnshire: { center: [53.2307, -0.5406], zoom: 9 },
+    national: { center: [52.75, -1.65], zoom: 6 }
+  };
+
   // Map Initialization (OpenStreetMap)
   const map = L.map("map", {
     zoomControl: false,
     preferCanvas: true
   }).setView([53.2307, -0.5406], 9);
+
+  function setMapViewForScope(scope) {
+    const view = MAP_VIEWS[scope] || MAP_VIEWS.lincolnshire;
+    map.setView(view.center, view.zoom, { animate: false });
+  }
 
   L.control.zoom({ position: "topright" }).addTo(map);
 
@@ -885,15 +895,6 @@ document.addEventListener("DOMContentLoaded", () => {
       style: (feature) => styleFeature(feature, colorScale),
       onEachFeature: onEachFeature
     }).addTo(map);
-
-    if (featuresToRender.length > 0) {
-      try {
-        const bounds = geojsonLayer.getBounds();
-        if (bounds.isValid()) {
-          map.fitBounds(bounds, { padding: [20, 20], maxZoom: 13 });
-        }
-      } catch (e) {}
-    }
   }
 
   function getFeatureCode(feature) {
@@ -1167,6 +1168,7 @@ document.addEventListener("DOMContentLoaded", () => {
     radio.addEventListener("change", (e) => {
       currentScope = e.target.value;
       currentDistrict = "All";
+      setMapViewForScope(currentScope);
       loadMetrics();
       loadPredictionsAndRenderMap();
     });
