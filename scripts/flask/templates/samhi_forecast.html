@@ -103,6 +103,14 @@
     font-weight: 700;
     color: #0f2d3a;
   }
+  #map_legend {
+    margin-bottom: 64px;
+  }
+  @media (max-width: 700px) {
+    #map_legend {
+      margin-bottom: 58px;
+    }
+  }
 </style>
 {% endblock %}
 
@@ -249,13 +257,6 @@
       <input id="opacity_slider" type="range" min="0.1" max="1.0" step="0.05" value="0.85" style="width:100%;">
     </div>
 
-    <!-- Publication-quality map export -->
-    <div class="control">
-      <label style="font-weight:700; font-size:0.86rem; margin-bottom:0.35rem; display:block;">Map Export</label>
-      <button id="export_map_btn" type="button" style="width:100%; padding:0.5rem 0.65rem; border:0; border-radius:0.5rem; background:#0c7da0; color:#fff; font-weight:700; cursor:pointer;">Download 300 DPI PNG</button>
-      <button id="export_pdf_btn" type="button" style="width:100%; margin-top:0.35rem; padding:0.5rem 0.65rem; border:1px solid #0c7da0; border-radius:0.5rem; background:#fff; color:#0c7da0; font-weight:700; cursor:pointer;">Download Map PDF</button>
-      <div id="export_map_status" style="font-size:0.72rem; color:#5c707d; margin-top:0.35rem; line-height:1.3;">Exports the current map values, and legend as a high-resolution image.</div>
-    </div>
   </aside>
 
   <main class="map-wrap">
@@ -304,8 +305,12 @@ document.addEventListener("DOMContentLoaded", () => {
   let geojsonData = null;
   let geojsonLayer = null;
 
+  const LINCOLNSHIRE_BOUNDS = [
+    [52.64022, -0.82065],
+    [53.61637, 0.35797]
+  ];
+
   const MAP_VIEWS = {
-    lincolnshire: { center: [53.2307, -0.5406], zoom: 9 },
     national: { center: [52.75, -1.65], zoom: 6 }
   };
 
@@ -313,10 +318,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const map = L.map("map", {
     zoomControl: false,
     preferCanvas: true
-  }).setView([53.2307, -0.5406], 9);
+  }).fitBounds(LINCOLNSHIRE_BOUNDS, { animate: false });
+  window.lumhrExportMap = () => map;
+  window.lumhrExportDataBounds = () => geojsonLayer ? geojsonLayer.getBounds() : null;
+
 
   function setMapViewForScope(scope) {
-    const view = MAP_VIEWS[scope] || MAP_VIEWS.lincolnshire;
+    if (scope === "lincolnshire" || !MAP_VIEWS[scope]) {
+      map.fitBounds(LINCOLNSHIRE_BOUNDS, { animate: false });
+      return;
+    }
+    const view = MAP_VIEWS[scope];
     map.setView(view.center, view.zoom, { animate: false });
   }
 
@@ -346,6 +358,20 @@ document.addEventListener("DOMContentLoaded", () => {
     return div;
   };
   legendControl.addTo(map);
+
+  function alignLegendAboveExportControls() {
+    const legend = document.getElementById("map_legend");
+    const mapElement = document.getElementById("map");
+    const exportControls = document.getElementById("lumhr_map_export_controls");
+    if (!legend || !mapElement || !exportControls) return;
+
+    const mapRect = mapElement.getBoundingClientRect();
+    const exportRect = exportControls.getBoundingClientRect();
+    const gap = 8;
+    legend.style.marginBottom = `${Math.max(0, mapRect.bottom - exportRect.top + gap)}px`;
+  }
+  alignLegendAboveExportControls();
+  window.addEventListener("resize", alignLegendAboveExportControls);
 
   // Inspector card elements
   const inspector = document.getElementById("map_inspector");
@@ -1064,55 +1090,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function downloadPublicationMap(outputFormat = "png", buttonId = "export_map_btn") {
-    const button = document.getElementById(buttonId);
-    const status = document.getElementById("export_map_status");
-    const params = new URLSearchParams({
-      scope: currentScope,
-      year: currentYear.toString(),
-      experiment_set: currentExperimentSet.toString(),
-      model: currentModel,
-      display_mode: currentDisplayMode,
-      district: currentDistrict,
-      dpi: "300",
-      format: outputFormat
-    });
-
-    button.disabled = true;
-    button.style.opacity = "0.65";
-    status.textContent = outputFormat === "pdf" ? "Rendering map PDF..." : "Rendering high-resolution map...";
-    fetch(`/api/samhi_ml/export.png?${params.toString()}`)
-      .then(async response => {
-        if (!response.ok) {
-          let message = "Map export failed.";
-          try {
-            const payload = await response.json();
-            message = payload.error || message;
-          } catch (error) {}
-          throw new Error(message);
-        }
-        return response.blob();
-      })
-      .then(blob => {
-        const downloadUrl = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = downloadUrl;
-        link.download = `samhi_${currentScope}_${currentYear}_${currentDisplayMode}_300dpi.${outputFormat}`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(downloadUrl);
-        status.textContent = outputFormat === "pdf" ? "Map PDF downloaded." : "High-resolution PNG downloaded.";
-      })
-      .catch(error => {
-        console.error("SAMHI map export failed:", error);
-        status.textContent = error.message;
-      })
-      .finally(() => {
-        button.disabled = false;
-        button.style.opacity = "1";
-      });
-  }
 
   function updateLegendDisplay(minVal, maxVal) {
     const div = document.getElementById("map_legend");
@@ -1200,8 +1177,6 @@ document.addEventListener("DOMContentLoaded", () => {
     renderGeoJSONLayer();
   });
 
-  document.getElementById("export_map_btn").addEventListener("click", () => downloadPublicationMap("png", "export_map_btn"));
-  document.getElementById("export_pdf_btn").addEventListener("click", () => downloadPublicationMap("pdf", "export_pdf_btn"));
 
   document.getElementById("opacity_slider").addEventListener("input", (e) => {
     currentOpacity = parseFloat(e.target.value);

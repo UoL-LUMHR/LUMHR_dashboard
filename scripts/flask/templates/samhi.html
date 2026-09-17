@@ -113,6 +113,9 @@
 
   let map;
   let geojsonLayer;
+  window.lumhrExportMap = () => map;
+  window.lumhrExportDataBounds = () => geojsonLayer ? geojsonLayer.getBounds() : null;
+
   let currentScores = {};
   let samhiDetails = {};
   let samhiMeta = {};

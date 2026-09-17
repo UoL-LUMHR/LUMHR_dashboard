@@ -197,6 +197,9 @@
 
   let map;
   let geojsonLayer;
+  window.lumhrExportMap = () => map;
+  window.lumhrExportDataBounds = () => geojsonLayer ? geojsonLayer.getBounds() : null;
+
   let gpLayer;
   let ruralLayerScores = {};
   let lsoaDetails = {};

@@ -17,7 +17,7 @@
       defer
     ></script>
     <script src="https://cdn.jsdelivr.net/npm/chroma-js@2.4.2/chroma.min.js" defer></script>
-    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index'] %}
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast'] %}
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
     {% endif %}
@@ -753,7 +753,7 @@
       }
     </style>
     {% block head_extra %}{% endblock %}
-    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index'] %}
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast'] %}
     <style>
       #lumhr_map_export_controls {
         position: fixed;
@@ -815,18 +815,208 @@
         <a href="/rural_risk_index" class="{% if request.path == '/rural_risk_index' %}active{% endif %}">Rural Risk</a>
       </div>
     </nav>
-    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index'] %}
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast'] %}
     <div id="lumhr_map_export_controls" aria-label="Map export controls">
       <button type="button" data-lumhr-export="png">Export PNG</button>
       <button type="button" data-lumhr-export="pdf">Export PDF</button>
-      <span id="lumhr_map_export_status">Exports the current map and active legend.</span>
+      <span id="lumhr_map_export_status">Exports the current map and active colour scale.</span>
     </div>
     {% endif %}
     {% block content %}{% endblock %}
     {% block scripts %}{% endblock %}
-    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index'] %}
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast'] %}
     <script>
       (() => {
+        const EXPORT_CAPTURE_SCALE = 3;
+        const EXPORT_DATA_PADDING = 28;
+        const EXPORT_COLORBAR_PANEL_WIDTH = 118;
+
+        function formatExportMidpoint(minText, maxText) {
+          const minValue = Number.parseFloat(minText);
+          const maxValue = Number.parseFloat(maxText);
+          if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) return "";
+
+          const decimalPlaces = (text) => {
+            const match = String(text).match(/\.(\d+)/);
+            return match ? match[1].length : 2;
+          };
+          const places = Math.max(decimalPlaces(minText), decimalPlaces(maxText));
+          return ((minValue + maxValue) / 2).toFixed(places);
+        }
+
+        function getExportColorbarData(mapElement) {
+          let titleSource = mapElement.querySelector("[id$='_colorbar_title']");
+          let gradientSource = mapElement.querySelector("[id$='_colorbar_gradient']");
+          let minSource = mapElement.querySelector("[id$='_colorbar_min']");
+          let maxSource = mapElement.querySelector("[id$='_colorbar_max']");
+          let middleSource = null;
+
+          // The forecast legend has a clean colour scale but no named colour-bar
+          // elements because it is generated directly as a compact map control.
+          if (!titleSource || !gradientSource || !minSource || !maxSource) {
+            const forecastLegend = mapElement.querySelector("#map_legend");
+            const parts = forecastLegend ? Array.from(forecastLegend.children) : [];
+            const labels = parts.length >= 3 ? parts[2].querySelectorAll("span") : [];
+            if (parts.length >= 3 && labels.length >= 2) {
+              titleSource = parts[0];
+              gradientSource = parts[1];
+              minSource = labels[0];
+              middleSource = labels.length >= 3 ? labels[1] : null;
+              maxSource = labels[labels.length - 1];
+            }
+          }
+
+          if (!titleSource || !gradientSource || !minSource || !maxSource) return null;
+
+          const gradient = gradientSource.style.background
+            || gradientSource.style.backgroundImage
+            || window.getComputedStyle(gradientSource).backgroundImage;
+          const minText = minSource.textContent.trim();
+          const maxText = maxSource.textContent.trim();
+          return {
+            title: titleSource.textContent.trim() || "Map scale",
+            gradient: gradient || "linear-gradient(to right, #2c7bb6, #ffffbf, #d7191c)",
+            min: minText,
+            middle: middleSource ? middleSource.textContent.trim() : formatExportMidpoint(minText, maxText),
+            max: maxText
+          };
+        }
+
+        function getExportCropBounds(mapElement) {
+          const fullBounds = {
+            left: 0,
+            top: 0,
+            right: mapElement.clientWidth,
+            bottom: mapElement.clientHeight
+          };
+          const exportMap = typeof window.lumhrExportMap === "function" ? window.lumhrExportMap() : null;
+          const dataBounds = typeof window.lumhrExportDataBounds === "function"
+            ? window.lumhrExportDataBounds()
+            : null;
+          if (!exportMap || !dataBounds || typeof dataBounds.isValid !== "function" || !dataBounds.isValid()) {
+            return fullBounds;
+          }
+
+          try {
+            const northWest = exportMap.latLngToContainerPoint(dataBounds.getNorthWest());
+            const southEast = exportMap.latLngToContainerPoint(dataBounds.getSouthEast());
+            const left = Math.max(0, Math.floor(Math.min(northWest.x, southEast.x) - EXPORT_DATA_PADDING));
+            const top = Math.max(0, Math.floor(Math.min(northWest.y, southEast.y) - EXPORT_DATA_PADDING));
+            const right = Math.min(mapElement.clientWidth, Math.ceil(Math.max(northWest.x, southEast.x) + EXPORT_DATA_PADDING));
+            const bottom = Math.min(mapElement.clientHeight, Math.ceil(Math.max(northWest.y, southEast.y) + EXPORT_DATA_PADDING));
+            if (right - left < 20 || bottom - top < 20) return fullBounds;
+            return { left, top, right, bottom };
+          } catch (error) {
+            console.warn("Could not determine the LSOA export extent:", error);
+            return fullBounds;
+          }
+        }
+
+        function cropCanvasToDataExtent(sourceCanvas, mapElement, cropBounds) {
+          const cssWidth = mapElement.clientWidth || sourceCanvas.width / EXPORT_CAPTURE_SCALE;
+          const cssHeight = mapElement.clientHeight || sourceCanvas.height / EXPORT_CAPTURE_SCALE;
+          const scaleX = sourceCanvas.width / cssWidth;
+          const scaleY = sourceCanvas.height / cssHeight;
+          const left = Math.max(0, Math.floor(cropBounds.left * scaleX));
+          const top = Math.max(0, Math.floor(cropBounds.top * scaleY));
+          const right = Math.min(sourceCanvas.width, Math.ceil(cropBounds.right * scaleX));
+          const bottom = Math.min(sourceCanvas.height, Math.ceil(cropBounds.bottom * scaleY));
+          if (left === 0 && top === 0 && right === sourceCanvas.width && bottom === sourceCanvas.height) {
+            return sourceCanvas;
+          }
+
+          const croppedCanvas = document.createElement("canvas");
+          croppedCanvas.width = Math.max(1, right - left);
+          croppedCanvas.height = Math.max(1, bottom - top);
+          croppedCanvas.getContext("2d").drawImage(
+            sourceCanvas,
+            left,
+            top,
+            croppedCanvas.width,
+            croppedCanvas.height,
+            0,
+            0,
+            croppedCanvas.width,
+            croppedCanvas.height
+          );
+          return croppedCanvas;
+        }
+
+        function extractGradientColours(gradientCss) {
+          const colours = String(gradientCss).match(/#[0-9a-f]{3,8}\b/gi) || [];
+          return colours.length >= 2 ? colours : ["#2c7bb6", "#ffffbf", "#d7191c"];
+        }
+
+        function addPublicationColorbar(mapCanvas, colorbarData, captureScale = EXPORT_CAPTURE_SCALE) {
+          if (!colorbarData) return mapCanvas;
+
+          const scale = captureScale;
+          const panelWidth = Math.max(100, Math.round(EXPORT_COLORBAR_PANEL_WIDTH * scale));
+          const outputCanvas = document.createElement("canvas");
+          outputCanvas.width = mapCanvas.width + panelWidth;
+          outputCanvas.height = mapCanvas.height;
+          const context = outputCanvas.getContext("2d");
+          context.fillStyle = "#ffffff";
+          context.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
+          context.drawImage(mapCanvas, 0, 0);
+          context.strokeStyle = "#c8d9e2";
+          context.lineWidth = Math.max(1, scale);
+          context.strokeRect(0, 0, mapCanvas.width, mapCanvas.height);
+
+          const panelLeft = mapCanvas.width;
+          const centreX = panelLeft + panelWidth / 2;
+          const barWidth = Math.max(12, Math.round(16 * scale));
+          const fontSize = Math.max(10, Math.round(10 * scale));
+          const labelSize = Math.max(9, Math.round(9 * scale));
+          const barHeight = Math.min(Math.round(220 * scale), Math.max(Math.round(90 * scale), mapCanvas.height - Math.round(70 * scale)));
+          const barTop = Math.max(Math.round(34 * scale), Math.round((mapCanvas.height - barHeight) / 2));
+          const barLeft = Math.round(centreX - barWidth / 2);
+
+          context.fillStyle = "#17313d";
+          context.font = `700 ${fontSize}px Arial, sans-serif`;
+          context.textAlign = "center";
+          context.textBaseline = "top";
+          const titleWords = colorbarData.title.split(/\s+/);
+          const titleLines = [];
+          let titleLine = "";
+          titleWords.forEach(word => {
+            const candidate = titleLine ? `${titleLine} ${word}` : word;
+            if (titleLine && context.measureText(candidate).width > panelWidth - Math.round(8 * scale)) {
+              titleLines.push(titleLine);
+              titleLine = word;
+            } else {
+              titleLine = candidate;
+            }
+          });
+          if (titleLine) titleLines.push(titleLine);
+          const titleTop = Math.max(
+            Math.round(8 * scale),
+            barTop - titleLines.length * Math.round(12 * scale) - Math.round(8 * scale)
+          );
+          titleLines.forEach((line, index) => {
+            context.fillText(line, centreX, titleTop + index * Math.round(12 * scale));
+          });
+
+          const gradient = context.createLinearGradient(0, barTop + barHeight, 0, barTop);
+          extractGradientColours(colorbarData.gradient).forEach((colour, index, colours) => {
+            gradient.addColorStop(index / (colours.length - 1), colour);
+          });
+          context.fillStyle = gradient;
+          context.fillRect(barLeft, barTop, barWidth, barHeight);
+          context.strokeStyle = "#d0d9df";
+          context.strokeRect(barLeft, barTop, barWidth, barHeight);
+
+          context.fillStyle = "#445763";
+          context.font = `${labelSize}px Arial, sans-serif`;
+          context.textAlign = "left";
+          context.textBaseline = "middle";
+          const labelLeft = barLeft + barWidth + Math.round(7 * scale);
+          context.fillText(colorbarData.max, labelLeft, barTop);
+          context.fillText(colorbarData.middle, labelLeft, barTop + barHeight / 2);
+          context.fillText(colorbarData.min, labelLeft, barTop + barHeight);
+          return outputCanvas;
+        }
+
         async function exportCurrentMap(format) {
           const mapElement = document.getElementById("map");
           const status = document.getElementById("lumhr_map_export_status");
@@ -838,17 +1028,25 @@
 
           buttons.forEach(button => { button.disabled = true; });
           status.textContent = format === "pdf" ? "Rendering map PDF..." : "Rendering high-resolution PNG...";
-          const zoomControls = mapElement.querySelectorAll(".leaflet-control-zoom");
-          zoomControls.forEach(control => { control.style.display = "none"; });
+          const colorbarData = getExportColorbarData(mapElement);
+          const cropBounds = getExportCropBounds(mapElement);
+          const hiddenElements = Array.from(mapElement.querySelectorAll(
+            ".leaflet-control-zoom, .leaflet-bar:not(.leaflet-control-zoom), #map_legend, .map-inspector"
+          ));
+          const previousDisplays = hiddenElements.map(element => element.style.display);
+          hiddenElements.forEach(element => { element.style.display = "none"; });
 
           try {
-            const canvas = await html2canvas(mapElement, {
+            const fullCanvas = await html2canvas(mapElement, {
               backgroundColor: "#ffffff",
-              scale: 3,
+              scale: EXPORT_CAPTURE_SCALE,
               useCORS: true,
               allowTaint: false,
               logging: false
             });
+            const croppedMap = cropCanvasToDataExtent(fullCanvas, mapElement, cropBounds);
+            const captureScale = fullCanvas.width / (mapElement.clientWidth || fullCanvas.width / EXPORT_CAPTURE_SCALE);
+            const canvas = addPublicationColorbar(croppedMap, colorbarData, captureScale);
             const imageData = canvas.toDataURL("image/png");
 
             if (format === "png") {
@@ -878,7 +1076,7 @@
             console.error("Map export failed:", error);
             status.textContent = error.message || "Map export failed.";
           } finally {
-            zoomControls.forEach(control => { control.style.display = ""; });
+            hiddenElements.forEach((element, index) => { element.style.display = previousDisplays[index]; });
             buttons.forEach(button => { button.disabled = false; });
           }
         }
