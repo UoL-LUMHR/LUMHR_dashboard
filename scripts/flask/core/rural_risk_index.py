@@ -13,6 +13,8 @@ RURAL_RISK_WEIGHT_KEYS = [
     "imd_weight",
     "oac_weight",
     "household_weight",
+    "fuel_poverty_weight",
+    "off_gas_grid_weight",
 ]
 
 # Supergroup fallback mapping (0 to 1)
@@ -105,15 +107,17 @@ def normalize_rural_risk_weights(weight_values: dict[str, float]) -> dict[str, f
 
 def apply_rural_risk_index(
     lsoa_df: pd.DataFrame,
-    rural_weight: float = 14.3,
-    gp_pt_weight: float = 14.3,
-    gp_car_weight: float = 14.3,
-    no_car_weight: float = 14.3,
-    imd_weight: float = 14.3,
-    oac_weight: float = 14.3,
-    household_weight: float = 14.2,
+    rural_weight: float = 11.1,
+    gp_pt_weight: float = 11.1,
+    gp_car_weight: float = 11.1,
+    no_car_weight: float = 11.1,
+    imd_weight: float = 11.1,
+    oac_weight: float = 11.1,
+    household_weight: float = 11.1,
+    fuel_poverty_weight: float = 11.1,
+    off_gas_grid_weight: float = 11.1,
 ) -> pd.DataFrame:
-    """Computes the multi-dimensional Rural Risk Index across 7 indicators (0-1, higher = higher risk)."""
+    """Computes the multi-dimensional Rural Risk Index across 9 indicators (0-1, higher = higher risk)."""
     normalized_weights = normalize_rural_risk_weights(
         {
             "rural_weight": rural_weight,
@@ -123,29 +127,42 @@ def apply_rural_risk_index(
             "imd_weight": imd_weight,
             "oac_weight": oac_weight,
             "household_weight": household_weight,
+            "fuel_poverty_weight": fuel_poverty_weight,
+            "off_gas_grid_weight": off_gas_grid_weight,
         }
     )
 
     out = lsoa_df.copy()
 
     # 1. Rural / Urban Isolation Risk (Invert Rural_Access: Smaller/remote rural = 1.0, Urban = 0.0)
-    rural_access = pd.to_numeric(out.get("Rural_Access", 0.5), errors="coerce").fillna(0.5)
+    rural_access_raw = pd.to_numeric(
+        out.get("Rural_Access", pd.Series(np.nan, index=out.index)), errors="coerce"
+    )
+    rural_access = rural_access_raw.fillna(0.5)
     out["Rural_Isolation_Normalized"] = 1.0 - rural_access
 
     # 2. GP Travel Time (PT / Walk) (Higher travel time = higher barrier/risk)
-    gp_pt_time = pd.to_numeric(out.get("GP_PT_Time", np.nan), errors="coerce")
+    gp_pt_time = pd.to_numeric(
+        out.get("GP_PT_Time", pd.Series(np.nan, index=out.index)), errors="coerce"
+    )
     out["GP_PT_Travel_Time_Normalized"] = minmax_scale(gp_pt_time).fillna(0.5)
 
     # 3. GP Travel Time (Car) (Higher travel time = higher barrier/risk)
-    gp_car_time = pd.to_numeric(out.get("GP_Car_Time", np.nan), errors="coerce")
+    gp_car_time = pd.to_numeric(
+        out.get("GP_Car_Time", pd.Series(np.nan, index=out.index)), errors="coerce"
+    )
     out["GP_Car_Travel_Time_Normalized"] = minmax_scale(gp_car_time).fillna(0.5)
 
     # 4. Car Non-Ownership / Transport Vulnerability (Higher % no-car = higher risk)
-    no_cars_pct = pd.to_numeric(out.get("No_Cars_Pct", np.nan), errors="coerce")
+    no_cars_pct = pd.to_numeric(
+        out.get("No_Cars_Pct", pd.Series(np.nan, index=out.index)), errors="coerce"
+    )
     out["No_Car_Normalized"] = minmax_scale(no_cars_pct).fillna(0.5)
 
     # 5. Deprivation (IMD 2025 Rank: Rank 1 is most deprived in England out of 33,755)
-    imd_rank = pd.to_numeric(out.get("IMD_2025_Rank", np.nan), errors="coerce")
+    imd_rank = pd.to_numeric(
+        out.get("IMD_2025_Rank", pd.Series(np.nan, index=out.index)), errors="coerce"
+    )
     max_nat_rank = 33755.0
     out["IMD_Deprivation_Normalized"] = (1.0 - (imd_rank / max_nat_rank)).clip(lower=0.0, upper=1.0).fillna(0.5)
 
@@ -160,18 +177,47 @@ def apply_rural_risk_index(
     out["LSOAC_Risk_Normalized"] = raw_oac_scores
 
     # 7. Household Composition Vulnerability (Solitary Elderly 66+, Lone Parents, and Elderly Couples)
-    hh_vuln = pd.to_numeric(out.get("Household_Vulnerability_Score", np.nan), errors="coerce")
+    hh_vuln = pd.to_numeric(
+        out.get("Household_Vulnerability_Score", pd.Series(np.nan, index=out.index)),
+        errors="coerce",
+    )
     out["Household_Vulnerability_Normalized"] = minmax_scale(hh_vuln).fillna(0.5)
 
-    # Composite Rural Risk Index
-    out["Rural_Risk_Index"] = (
-        out["Rural_Isolation_Normalized"] * normalized_weights["rural_weight"]
-        + out["GP_PT_Travel_Time_Normalized"] * normalized_weights["gp_pt_weight"]
-        + out["GP_Car_Travel_Time_Normalized"] * normalized_weights["gp_car_weight"]
-        + out["No_Car_Normalized"] * normalized_weights["no_car_weight"]
-        + out["IMD_Deprivation_Normalized"] * normalized_weights["imd_weight"]
-        + out["LSOAC_Risk_Normalized"] * normalized_weights["oac_weight"]
-        + out["Household_Vulnerability_Normalized"] * normalized_weights["household_weight"]
+    # 8. Fuel poverty (higher proportion of households fuel poor = higher risk)
+    fuel_poverty_pct = pd.to_numeric(
+        out.get("Fuel_Poverty_Pct", pd.Series(np.nan, index=out.index)), errors="coerce"
     )
+    out["Fuel_Poverty_Normalized"] = minmax_scale(fuel_poverty_pct).fillna(0.5)
+
+    # 9. Properties not connected to the gas grid (higher proportion = higher risk)
+    off_gas_grid_pct = pd.to_numeric(
+        out.get(
+            "Properties_Not_On_Gas_Grid_Pct", pd.Series(np.nan, index=out.index)
+        ),
+        errors="coerce",
+    )
+    out["Off_Gas_Grid_Normalized"] = minmax_scale(off_gas_grid_pct).fillna(0.5)
+
+    # Composite Rural Risk Index. Suppressed/missing source indicators are
+    # excluded for that LSOA and the remaining weights are renormalized.
+    components = [
+        ("Rural_Isolation_Normalized", "rural_weight", rural_access_raw.notna()),
+        ("GP_PT_Travel_Time_Normalized", "gp_pt_weight", gp_pt_time.notna()),
+        ("GP_Car_Travel_Time_Normalized", "gp_car_weight", gp_car_time.notna()),
+        ("No_Car_Normalized", "no_car_weight", no_cars_pct.notna()),
+        ("IMD_Deprivation_Normalized", "imd_weight", imd_rank.notna()),
+        ("LSOAC_Risk_Normalized", "oac_weight", mapped_subgroup.notna() | mapped_supergroup.notna()),
+        ("Household_Vulnerability_Normalized", "household_weight", hh_vuln.notna()),
+        ("Fuel_Poverty_Normalized", "fuel_poverty_weight", fuel_poverty_pct.notna()),
+        ("Off_Gas_Grid_Normalized", "off_gas_grid_weight", off_gas_grid_pct.notna()),
+    ]
+    weighted_sum = pd.Series(0.0, index=out.index)
+    available_weight = pd.Series(0.0, index=out.index)
+    for value_column, weight_key, available in components:
+        weight = normalized_weights[weight_key]
+        weighted_sum = weighted_sum + out[value_column] * weight * available.astype(float)
+        available_weight = available_weight + weight * available.astype(float)
+
+    out["Rural_Risk_Index"] = weighted_sum / available_weight.replace(0.0, np.nan)
 
     return out

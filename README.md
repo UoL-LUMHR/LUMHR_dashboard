@@ -13,7 +13,7 @@ The dashboard provides interactive mapping and index calculation across Lincolns
 - **Access Gap Index**: Highlights geographic disparities by comparing clinical need directly against accessibility (Need minus Access). Range (+1.0 to -1.0). +1.0 most severe gap, the area has a high need but low access, 0.0 balanced level of access matches its level of need, to -1.0 surplus access the area has lowest need but the highest access.
 - **Small Area Mental Health Index (SAMHI)**: Longitudinal view of composite mental health indicators from 2011 to 2022.
 - **SAMHI Machine Learning Forecasting & Projections**: 11-model spatial-temporal machine learning suite (ElasticNet, Stacking Ensemble, CatBoost, LightGBM, Explainable Boosting Machine) with multi-year forward projections (2023–2025) and TreeSHAP explainability. See [scripts/machine_learning/samhi](scripts/machine_learning/samhi/README.md).
-- **Rural Risk Index**: Evaluates rural vulnerability using 2021 Rural/Urban classification, travel times, car non-ownership, geodemographics (LSOAC), and IMD deprivation. Range 0.0 low risk to 1.0 high risk.
+- **Rural Risk Index**: Evaluates rural vulnerability using 2021 Rural/Urban classification, travel times, car non-ownership, geodemographics (LSOAC), IMD deprivation, household composition, fuel poverty, and properties not connected to the gas grid. Range 0.0 low risk to 1.0 high risk.
 
 ## Data Sources
 

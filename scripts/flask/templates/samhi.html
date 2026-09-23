@@ -140,6 +140,14 @@
     return feature?.properties?.CODE ?? feature?.properties?.LSOA_CODE ?? null;
   }
 
+  function samhiTooltipText(code, name) {
+    const mode = samhiMeta.mode || getMode();
+    const value = currentScores[code];
+    const safeName = String(name || "Unknown LSOA").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
+    const safeCode = String(code || "Unknown").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
+    return `<div class="lsoa-tooltip-content"><div style="font-weight:700;">${safeName}</div><div style="color:#5d717d; font-size:0.75rem;">${safeCode}</div><div style="margin-top:4px;"><strong>${getLegendTitle()}:</strong> ${formatValue(value, mode)}</div></div>`;
+  }
+
   function isChangeMode() {
     return getAnalysisMode() === "Change Between Years";
   }
@@ -369,7 +377,7 @@
         }
 
         layer.bindPopup(popupHtml, { maxWidth: 360 });
-        layer.setTooltipContent(`${code}${name ? ` | ${name}` : ""}`);
+        layer.setTooltipContent(samhiTooltipText(code, details.lsoa_name || name));
       });
     }
 
@@ -497,7 +505,7 @@
       onEachFeature: (feature, layer) => {
         const code = getCode(feature) ?? "Unknown";
         const name = feature?.properties?.NAME ?? "";
-        layer.bindTooltip(`${code}${name ? ` | ${name}` : ""}`);
+        layer.bindTooltip(samhiTooltipText(code, name));
       }
     }).addTo(map);
 

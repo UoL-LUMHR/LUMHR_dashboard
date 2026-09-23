@@ -18,7 +18,7 @@ from core.allocation import (
     prepare_prescribing,
     prepare_smi,
 )
-from core.common import normalize_code
+from core.common import find_column, normalize_code, parse_numeric
 from core.samhi import join_samhi, prepare_samhi
 from core.travel import (
     build_2011_to_2021_lookup,
@@ -104,6 +104,15 @@ def get_paths(base_dir: Path) -> dict[str, Path]:
         / "datasets"
         / "TS003_household_composition"
         / "lincolnshire_ts003_household_composition.csv",
+        "fuel_poverty": base_dir
+        / "datasets"
+        / "fuel_poverty"
+        / "2024"
+        / "lincolnshire_fuel_poverty_2024.csv",
+        "properties_not_connected_to_gas_network": base_dir
+        / "datasets"
+        / "properties_not_connected_to_gas_network"
+        / "lincolnshire_properties_not_connected_to_gas_network_2024.csv",
         "lsoa_2011_2021_lookup": base_dir
         / "datasets"
         / "lincolnshire_lsoa"
@@ -194,6 +203,20 @@ def _load_lsoa_codes_and_centroids(geojson_path: Path) -> tuple[pd.DataFrame, pd
     return lsoa_codes_df, lsoa_centroids_df
 
 
+def _prepare_energy_metric(
+    raw_df: pd.DataFrame,
+    code_candidates: list[str],
+    value_candidates: list[str],
+    output_column: str,
+) -> pd.DataFrame:
+    code_column = find_column(raw_df, code_candidates)
+    value_column = find_column(raw_df, value_candidates)
+    out = raw_df[[code_column, value_column]].copy()
+    out["LSOA_CODE"] = out[code_column].map(normalize_code)
+    out[output_column] = parse_numeric(out[value_column])
+    return out[["LSOA_CODE", output_column]].drop_duplicates(subset=["LSOA_CODE"])
+
+
 def load_raw_data(base_dir_str: str) -> dict[str, object]:
     base_dir = Path(base_dir_str)
     paths = get_paths(base_dir)
@@ -220,6 +243,10 @@ def load_raw_data(base_dir_str: str) -> dict[str, object]:
         "imd_2025_raw": pd.read_csv(paths["imd_2025"]),
         "lsoac_2021_2_raw": pd.read_csv(paths["lsoac_2021_2"]),
         "ts003_raw": pd.read_csv(paths["ts003_household_composition"]),
+        "fuel_poverty_raw": pd.read_csv(paths["fuel_poverty"]),
+        "properties_not_connected_to_gas_network_raw": pd.read_csv(
+            paths["properties_not_connected_to_gas_network"]
+        ),
         "lsoa_2011_2021_lookup_raw": pd.read_csv(paths["lsoa_2011_2021_lookup"]),
         "lsoa_codes": lsoa_codes_df,
         "lsoa_centroids": lsoa_centroids_df,
@@ -280,6 +307,22 @@ def get_prepared_bundle_cached(base_dir_str: str) -> dict[str, object]:
 
     ts003_df = prepare_ts003_household_composition(raw["ts003_raw"])
     lsoa_metrics = lsoa_metrics.merge(ts003_df, on="LSOA_CODE", how="left")
+
+    fuel_poverty_df = _prepare_energy_metric(
+        raw["fuel_poverty_raw"],
+        ["LSOA Code"],
+        ["Proportion of households fuel poor (%)"],
+        "Fuel_Poverty_Pct",
+    )
+    lsoa_metrics = lsoa_metrics.merge(fuel_poverty_df, on="LSOA_CODE", how="left")
+
+    gas_network_df = _prepare_energy_metric(
+        raw["properties_not_connected_to_gas_network_raw"],
+        ["LSOA code"],
+        ["Estimated percentage of properties not on the gas grid"],
+        "Properties_Not_On_Gas_Grid_Pct",
+    )
+    lsoa_metrics = lsoa_metrics.merge(gas_network_df, on="LSOA_CODE", how="left")
 
     gp_marker_df = build_gp_marker_df(gp_loc_df, gp_master, mapping_df, lsoa_centroids_df, in_area_lsoa_codes)
 

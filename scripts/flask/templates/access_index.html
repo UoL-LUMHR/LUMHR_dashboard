@@ -229,6 +229,21 @@
     return accessLayerScores[currentLayerKey] || {};
   }
 
+  function formatAccessTooltipValue(value, layerKey = currentLayerKey) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "N/A";
+    if (layerKey.endsWith("_Pct") || layerKey === "Pct_65plus") return `${num.toFixed(1)}%`;
+    if (layerKey.includes("_Time")) return `${num.toFixed(1)} min`;
+    return num.toFixed(4);
+  }
+
+  function lsoaTooltipText(code, name) {
+    const value = getActiveLayerScores()[code];
+    const safeName = String(name || "Unknown LSOA").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
+    const safeCode = String(code || "Unknown").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
+    return `<div class="lsoa-tooltip-content"><div style="font-weight:700;">${safeName}</div><div style="color:#5d717d; font-size:0.75rem;">${safeCode}</div><div style="margin-top:4px;"><strong>${layerLabels[currentLayerKey] || "Map Layer"}:</strong> ${formatAccessTooltipValue(value)}</div></div>`;
+  }
+
   function getScaleForLayer(layerKey = currentLayerKey) {
     return "YlGnBu";
   }
@@ -387,7 +402,7 @@
       }
 
       layer.bindPopup(popupHtml, { maxWidth: 360 });
-      layer.setTooltipContent(`${code}${name ? ` | ${name}` : ""}`);
+      layer.setTooltipContent(lsoaTooltipText(code, detail.lsoa_name || name));
     });
   }
 
@@ -661,7 +676,7 @@
       onEachFeature: (feature, layer) => {
         const code = getCode(feature) ?? "Unknown";
         const name = feature?.properties?.NAME ?? "";
-        layer.bindTooltip(`${code}${name ? ` | ${name}` : ""}`);
+        layer.bindTooltip(lsoaTooltipText(code, name));
       }
     }).addTo(map);
 

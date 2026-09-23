@@ -147,6 +147,35 @@
     return needLayerScores[currentLayerKey] || {};
   }
 
+  function getNeedLayerLabel() {
+    return currentLayerKey === "SAMHI_Selected"
+      ? samhiLegendLabel
+      : ({
+        "Need_Index": "Need Index",
+        "Depression_Prevalence": "Depression Prevalence (%)",
+        "SMI_Prevalence": "SMI Prevalence (%)",
+        "Antidepressant_Items_Per_Patient": "Antidepressant Items / Patient",
+        "Pct_65plus": "Older Adults (65+) %",
+        "GP_Registration_Rate_Pct": "GP Registration Coverage (%)",
+      }[currentLayerKey] || "Map Layer");
+  }
+
+  function formatNeedTooltipValue(value, layerKey = currentLayerKey) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "N/A";
+    if (["Depression_Prevalence", "SMI_Prevalence", "Pct_65plus", "GP_Registration_Rate_Pct"].includes(layerKey)) {
+      return `${num.toFixed(1)}%`;
+    }
+    return num.toFixed(4);
+  }
+
+  function lsoaTooltipText(code, name) {
+    const value = getActiveLayerScores()[code];
+    const safeName = String(name || "Unknown LSOA").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
+    const safeCode = String(code || "Unknown").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
+    return `<div class="lsoa-tooltip-content"><div style="font-weight:700;">${safeName}</div><div style="color:#5d717d; font-size:0.75rem;">${safeCode}</div><div style="margin-top:4px;"><strong>${getNeedLayerLabel()}:</strong> ${formatNeedTooltipValue(value)}</div></div>`;
+  }
+
   function getScaleForLayer(layerKey = currentLayerKey) {
     if (layerKey === "SAMHI_Selected" || layerKey === "Pct_65plus" || layerKey === "GP_Registration_Rate_Pct") {
       return "YlGnBu";
@@ -307,7 +336,7 @@
       }
 
       layer.bindPopup(popupHtml, { maxWidth: 360 });
-      layer.setTooltipContent(`${code}${name ? ` | ${name}` : ""}`);
+      layer.setTooltipContent(lsoaTooltipText(code, detail.lsoa_name || name));
     });
   }
 
@@ -617,7 +646,7 @@
       onEachFeature: (feature, layer) => {
         const code = getCode(feature) ?? "Unknown";
         const name = feature?.properties?.NAME ?? "";
-        layer.bindTooltip(`${code}${name ? ` | ${name}` : ""}`);
+        layer.bindTooltip(lsoaTooltipText(code, name));
       }
     }).addTo(map);
 

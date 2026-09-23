@@ -746,20 +746,15 @@ def samhi_scores_api():
 @app.get("/api/rural_risk_scores")
 def rural_risk_scores_api():
     try:
-        rural_weight = _parse_float_arg("w_rural", 15.0)
-        gp_pt_weight = _parse_float_arg("w_gp_pt", 15.0)
-        gp_car_weight = _parse_float_arg("w_gp_car", 15.0)
-        no_car_weight = _parse_float_arg("w_no_car", 15.0)
-        imd_weight = _parse_float_arg("w_imd", 15.0)
-        oac_weight = _parse_float_arg("w_oac", 10.0)
-        household_weight = _parse_float_arg("w_household", 15.0)
-        rural_weight = _parse_float_arg("w_rural", 14.3)
-        gp_pt_weight = _parse_float_arg("w_gp_pt", 14.3)
-        gp_car_weight = _parse_float_arg("w_gp_car", 14.3)
-        no_car_weight = _parse_float_arg("w_no_car", 14.3)
-        imd_weight = _parse_float_arg("w_imd", 14.3)
-        oac_weight = _parse_float_arg("w_oac", 14.3)
-        household_weight = _parse_float_arg("w_household", 14.2)
+        rural_weight = _parse_float_arg("w_rural", 11.1)
+        gp_pt_weight = _parse_float_arg("w_gp_pt", 11.1)
+        gp_car_weight = _parse_float_arg("w_gp_car", 11.1)
+        no_car_weight = _parse_float_arg("w_no_car", 11.1)
+        imd_weight = _parse_float_arg("w_imd", 11.1)
+        oac_weight = _parse_float_arg("w_oac", 11.1)
+        household_weight = _parse_float_arg("w_household", 11.1)
+        fuel_poverty_weight = _parse_float_arg("w_fuel_poverty", 11.1)
+        off_gas_grid_weight = _parse_float_arg("w_off_gas_grid", 11.1)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -772,6 +767,8 @@ def rural_risk_scores_api():
         imd_weight=imd_weight,
         oac_weight=oac_weight,
         household_weight=household_weight,
+        fuel_poverty_weight=fuel_poverty_weight,
+        off_gas_grid_weight=off_gas_grid_weight,
     )
 
     layers = {
@@ -784,6 +781,8 @@ def rural_risk_scores_api():
         "IMD_2025_Rank": _scores_to_dict(scored, "IMD_2025_Rank"),
         "LSOAC_Risk": _scores_to_dict(scored, "LSOAC_Risk_Normalized"),
         "Household_Vulnerability": _scores_to_dict(scored, "Household_Vulnerability_Normalized"),
+        "Fuel_Poverty_Pct": _scores_to_dict(scored, "Fuel_Poverty_Pct"),
+        "Properties_Not_On_Gas_Grid_Pct": _scores_to_dict(scored, "Properties_Not_On_Gas_Grid_Pct"),
         "Single_Pensioner_HH_Pct": _scores_to_dict(scored, "Single_Pensioner_HH_Pct"),
         "Non_Couple_HH_Pct": _scores_to_dict(scored, "Non_Couple_HH_Pct"),
         "Pensioner_Couple_HH_Pct": _scores_to_dict(scored, "Pensioner_Couple_HH_Pct"),
@@ -828,6 +827,8 @@ def rural_risk_scores_api():
             "non_couple_hh_count": _num_or_none(row.get("Non_Couple_HH_Count")),
             "non_couple_hh_pct": _num_or_none(row.get("Non_Couple_HH_Pct")),
             "household_vulnerability_score": _num_or_none(row.get("Household_Vulnerability_Normalized")),
+            "fuel_poverty_pct": _num_or_none(row.get("Fuel_Poverty_Pct")),
+            "properties_not_on_gas_grid_pct": _num_or_none(row.get("Properties_Not_On_Gas_Grid_Pct")),
             "ons_pop_total": _num_or_none(row.get("ONS_Pop_Total_2024")),
             "ons_pop_18plus": _num_or_none(row.get("ONS_Pop_18plus")),
             "ons_pop_65plus": _num_or_none(row.get("ONS_Pop_65plus")),
@@ -853,6 +854,8 @@ def rural_risk_scores_api():
                 "imd_weight": imd_weight,
                 "oac_weight": oac_weight,
                 "household_weight": household_weight,
+                "fuel_poverty_weight": fuel_poverty_weight,
+                "off_gas_grid_weight": off_gas_grid_weight,
             },
         }
     )
