@@ -746,15 +746,17 @@ def samhi_scores_api():
 @app.get("/api/rural_risk_scores")
 def rural_risk_scores_api():
     try:
-        rural_weight = _parse_float_arg("w_rural", 11.1)
-        gp_pt_weight = _parse_float_arg("w_gp_pt", 11.1)
-        gp_car_weight = _parse_float_arg("w_gp_car", 11.1)
-        no_car_weight = _parse_float_arg("w_no_car", 11.1)
-        imd_weight = _parse_float_arg("w_imd", 11.1)
-        oac_weight = _parse_float_arg("w_oac", 11.1)
-        household_weight = _parse_float_arg("w_household", 11.1)
-        fuel_poverty_weight = _parse_float_arg("w_fuel_poverty", 11.1)
-        off_gas_grid_weight = _parse_float_arg("w_off_gas_grid", 11.1)
+        rural_weight = _parse_float_arg("w_rural", 9.1)
+        gp_pt_weight = _parse_float_arg("w_gp_pt", 9.1)
+        gp_car_weight = _parse_float_arg("w_gp_car", 9.1)
+        no_car_weight = _parse_float_arg("w_no_car", 9.1)
+        imd_weight = _parse_float_arg("w_imd", 9.1)
+        oac_weight = _parse_float_arg("w_oac", 9.1)
+        household_weight = _parse_float_arg("w_household", 9.1)
+        fuel_poverty_weight = _parse_float_arg("w_fuel_poverty", 9.1)
+        off_gas_grid_weight = _parse_float_arg("w_off_gas_grid", 9.1)
+        housing_tenure_weight = _parse_float_arg("w_housing_tenure", 9.1)
+        overcrowding_weight = _parse_float_arg("w_overcrowding", 9.1)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -769,6 +771,8 @@ def rural_risk_scores_api():
         household_weight=household_weight,
         fuel_poverty_weight=fuel_poverty_weight,
         off_gas_grid_weight=off_gas_grid_weight,
+        housing_tenure_weight=housing_tenure_weight,
+        overcrowding_weight=overcrowding_weight,
     )
 
     layers = {
@@ -783,6 +787,12 @@ def rural_risk_scores_api():
         "Household_Vulnerability": _scores_to_dict(scored, "Household_Vulnerability_Normalized"),
         "Fuel_Poverty_Pct": _scores_to_dict(scored, "Fuel_Poverty_Pct"),
         "Properties_Not_On_Gas_Grid_Pct": _scores_to_dict(scored, "Properties_Not_On_Gas_Grid_Pct"),
+        "Owner_Occupied_Pct": _scores_to_dict(scored, "Owner_Occupied_Pct"),
+        "Social_Rented_Pct": _scores_to_dict(scored, "Social_Rented_Pct"),
+        "Private_Rented_Pct": _scores_to_dict(scored, "Private_Rented_Pct"),
+        "Overcrowded_HH_Pct": _scores_to_dict(scored, "Overcrowded_HH_Pct"),
+        "Housing_Tenure_Vulnerability": _scores_to_dict(scored, "Housing_Tenure_Vulnerability_Normalized"),
+        "Overcrowding_Risk": _scores_to_dict(scored, "Overcrowding_Normalized"),
         "Single_Pensioner_HH_Pct": _scores_to_dict(scored, "Single_Pensioner_HH_Pct"),
         "Non_Couple_HH_Pct": _scores_to_dict(scored, "Non_Couple_HH_Pct"),
         "Pensioner_Couple_HH_Pct": _scores_to_dict(scored, "Pensioner_Couple_HH_Pct"),
@@ -829,6 +839,17 @@ def rural_risk_scores_api():
             "household_vulnerability_score": _num_or_none(row.get("Household_Vulnerability_Normalized")),
             "fuel_poverty_pct": _num_or_none(row.get("Fuel_Poverty_Pct")),
             "properties_not_on_gas_grid_pct": _num_or_none(row.get("Properties_Not_On_Gas_Grid_Pct")),
+            "tenure_households": _num_or_none(row.get("Tenure_Households")),
+            "owner_occupied_hh_count": _num_or_none(row.get("Owner_Occupied_HH_Count")),
+            "owner_occupied_pct": _num_or_none(row.get("Owner_Occupied_Pct")),
+            "social_rented_hh_count": _num_or_none(row.get("Social_Rented_HH_Count")),
+            "social_rented_pct": _num_or_none(row.get("Social_Rented_Pct")),
+            "private_rented_hh_count": _num_or_none(row.get("Private_Rented_HH_Count")),
+            "private_rented_pct": _num_or_none(row.get("Private_Rented_Pct")),
+            "overcrowded_hh_count": _num_or_none(row.get("Overcrowded_HH_Count")),
+            "overcrowded_hh_pct": _num_or_none(row.get("Overcrowded_HH_Pct")),
+            "housing_tenure_vulnerability": _num_or_none(row.get("Housing_Tenure_Vulnerability_Normalized")),
+            "overcrowding_risk": _num_or_none(row.get("Overcrowding_Normalized")),
             "ons_pop_total": _num_or_none(row.get("ONS_Pop_Total_2024")),
             "ons_pop_18plus": _num_or_none(row.get("ONS_Pop_18plus")),
             "ons_pop_65plus": _num_or_none(row.get("ONS_Pop_65plus")),
@@ -856,6 +877,8 @@ def rural_risk_scores_api():
                 "household_weight": household_weight,
                 "fuel_poverty_weight": fuel_poverty_weight,
                 "off_gas_grid_weight": off_gas_grid_weight,
+                "housing_tenure_weight": housing_tenure_weight,
+                "overcrowding_weight": overcrowding_weight,
             },
         }
     )

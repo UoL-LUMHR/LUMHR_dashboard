@@ -14,19 +14,19 @@
     <p class="muted">Multi-dimensional rural risk and vulnerability model across all 435 Lincolnshire LSOAs.</p>
 
     <div class="quick-actions-bar">
-      <button class="btn-action-sm" id="btn_reset_weights" type="button" title="Reset all 9 indicator weights equally">↺ Reset Weights (~11.1% each)</button>
+      <button class="btn-action-sm" id="btn_reset_weights" type="button" title="Reset all 11 indicator weights equally">↺ Reset Weights (~9.1% each)</button>
     </div>
 
     <details class="control">
       <summary><strong>Method Summary</strong></summary>
       <p class="muted" style="margin-top:0.6rem;">
-        The <strong>Rural Risk Index</strong> combines nine indicators covering rural isolation, healthcare accessibility, transport vulnerability, deprivation, geodemographic composition, household vulnerability, and energy vulnerability into a single composite score (0 to 1, where higher = higher cumulative risk).
+        The <strong>Rural Risk Index</strong> combines eleven indicators covering rural isolation, healthcare accessibility, transport vulnerability, deprivation, geodemographic composition, household vulnerability, energy vulnerability, housing tenure vulnerability, and overcrowding into a single composite score (0 to 1, where higher = higher cumulative risk).
       </p>
 
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Index vs Single Indicator:</strong></p>
       <ul class="muted" style="margin-top:0; padding-left:1.1rem;">
         <li><strong>Rural Isolation Score (Single Indicator):</strong> Measures purely physical settlement remoteness and distance from major urban centres based on DEFRA's 2021 Rural/Urban Classification (0 = Urban to 1 = Smaller remote rural). It does not factor in vehicle access, journey times to GP surgeries, or socio-economic deprivation.</li>
-        <li><strong>Rural Risk Index (Overall Composite):</strong> The overall weighted combination of all 9 indicators together, capturing cumulative vulnerability, practical service barriers, and energy vulnerability for an area.</li>
+        <li><strong>Rural Risk Index (Overall Composite):</strong> The overall weighted combination of all 11 indicators together, capturing cumulative vulnerability, practical service barriers, and energy vulnerability for an area.</li>
       </ul>
 
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Indicators:</strong></p>
@@ -40,12 +40,15 @@
         <li><strong>Household Composition:</strong> Min-max normalised vulnerability score combining solitary older adults (aged 66+ living alone), all-pensioner couples, and lone parent families (Census 2021 Table TS003).</li>
         <li><strong>Fuel Poverty:</strong> Min-max normalised proportion of households in fuel poverty (2024).</li>
         <li><strong>Off-Gas-Grid Properties:</strong> Min-max normalised proportion of properties not connected to the gas grid (2024).</li>
+        <li><strong>Housing Tenure Vulnerability:</strong> Min-max normalised percentage of households that are not owner-occupied (Census 2021).</li>
+        <li><strong>Overcrowding:</strong> Min-max normalised percentage of households with fewer bedrooms than required (Census 2021).</li>
+        <li><strong>Housing Tenure and Overcrowding:</strong> The composite uses two derived risk indicators: non-owner-occupied households and overcrowded households. The detailed tenure percentages remain available as standalone map layers.</li>
         <li><strong>Missing gas-grid values:</strong> Source blanks remain unavailable on the standalone map layer and are excluded from that LSOA's composite calculation, with the remaining weights renormalised.</li>
       </ul>
 
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Formula:</strong></p>
       <ul class="muted" style="margin-top:0; padding-left:1.1rem;">
-        <li><strong>Rural Risk Index</strong> = (Rural_Isolation &times; w_rural) + (GP_PT_Travel &times; w_gp_pt) + (GP_Car_Travel &times; w_gp_car) + (No_Car &times; w_no_car) + (IMD_Deprivation &times; w_imd) + (LSOAC_Risk &times; w_oac) + (Household_Vuln &times; w_household) + (Fuel_Poverty &times; w_fuel_poverty) + (Off_Gas_Grid &times; w_off_gas_grid)</li>
+        <li><strong>Rural Risk Index</strong> = (Rural_Isolation &times; w_rural) + (GP_PT_Travel &times; w_gp_pt) + (GP_Car_Travel &times; w_gp_car) + (No_Car &times; w_no_car) + (IMD_Deprivation &times; w_imd) + (LSOAC_Risk &times; w_oac) + (Household_Vuln &times; w_household) + (Fuel_Poverty &times; w_fuel_poverty) + (Off_Gas_Grid &times; w_off_gas_grid) + (Housing_Tenure &times; w_housing_tenure) + (Overcrowding &times; w_overcrowding)</li>
       </ul>
     </details>
 
@@ -61,6 +64,8 @@
         <li><a href="https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates" target="_blank" rel="noopener noreferrer">LSOA Mid-Year Population Estimates (Mid-2024 SAPE, ONS)</a></li>
         <li><a href="https://www.gov.uk/government/statistics/sub-regional-fuel-poverty-report-2026-2024-data/sub-regional-fuel-poverty-in-england-2026-report-2024-data-accessible-webpage#sub-regional-fuel-poverty-2026-2024-data" target="_blank" rel="noopener noreferrer">Sub-regional Fuel Poverty in England (2024 data)</a></li>
         <li><a href="https://www.gov.uk/government/statistics/lsoa-estimates-of-households-not-connected-to-the-gas-network" target="_blank" rel="noopener noreferrer">LSOA Estimates of Properties Not Connected to the Gas Network (2024)</a></li>
+        <li><a href="https://www.ons.gov.uk/datasets/TS054/editions/2021/versions/4" target="_blank" rel="noopener noreferrer">ONS Census 2021: Tenure (Table TS054)</a></li>
+        <li><a href="https://www.ons.gov.uk/datasets/TS052/editions/2021/versions/5" target="_blank" rel="noopener noreferrer">ONS Census 2021: Occupancy Rating for Bedrooms (Table TS052)</a></li>
         <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/patients-registered-at-a-gp-practice/july-2026" target="_blank" rel="noopener noreferrer">NHS Digital: Patients Registered at a GP Practice (July 2026)</a></li>
       </ul>
     </details>
@@ -120,73 +125,89 @@
     <div class="control">
       <div class="control-header">
         <label for="w_rural">Rural / Urban Isolation</label>
-        <output id="w_rural_val">11.1</output>
+        <output id="w_rural_val">9.1</output>
       </div>
-      <input id="w_rural" type="range" min="0" max="100" step="0.1" value="11.1">
+      <input id="w_rural" type="range" min="0" max="100" step="0.1" value="9.1">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_gp_pt">GP Travel Time (PT / Walk)</label>
-        <output id="w_gp_pt_val">11.1</output>
+        <output id="w_gp_pt_val">9.1</output>
       </div>
-      <input id="w_gp_pt" type="range" min="0" max="100" step="0.1" value="11.1">
+      <input id="w_gp_pt" type="range" min="0" max="100" step="0.1" value="9.1">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_gp_car">GP Travel Time (Car)</label>
-        <output id="w_gp_car_val">11.1</output>
+        <output id="w_gp_car_val">9.1</output>
       </div>
-      <input id="w_gp_car" type="range" min="0" max="100" step="0.1" value="11.1">
+      <input id="w_gp_car" type="range" min="0" max="100" step="0.1" value="9.1">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_no_car">No Car Ownership (%)</label>
-        <output id="w_no_car_val">11.1</output>
+        <output id="w_no_car_val">9.1</output>
       </div>
-      <input id="w_no_car" type="range" min="0" max="100" step="0.1" value="11.1">
+      <input id="w_no_car" type="range" min="0" max="100" step="0.1" value="9.1">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_imd">Deprivation (IMD 2025)</label>
-        <output id="w_imd_val">11.1</output>
+        <output id="w_imd_val">9.1</output>
       </div>
-      <input id="w_imd" type="range" min="0" max="100" step="0.1" value="11.1">
+      <input id="w_imd" type="range" min="0" max="100" step="0.1" value="9.1">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_oac">Geodemographic Profile (LSOAC)</label>
-        <output id="w_oac_val">11.1</output>
+        <output id="w_oac_val">9.1</output>
       </div>
-      <input id="w_oac" type="range" min="0" max="100" step="0.1" value="11.1">
+      <input id="w_oac" type="range" min="0" max="100" step="0.1" value="9.1">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_household">Household Isolation / Solitary Living</label>
-        <output id="w_household_val">11.1</output>
+        <output id="w_household_val">9.1</output>
       </div>
-      <input id="w_household" type="range" min="0" max="100" step="0.1" value="11.1">
+      <input id="w_household" type="range" min="0" max="100" step="0.1" value="9.1">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_fuel_poverty">Fuel Poverty (%)</label>
-        <output id="w_fuel_poverty_val">11.1</output>
+        <output id="w_fuel_poverty_val">9.1</output>
       </div>
-      <input id="w_fuel_poverty" type="range" min="0" max="100" step="0.1" value="11.1">
+      <input id="w_fuel_poverty" type="range" min="0" max="100" step="0.1" value="9.1">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_off_gas_grid">Properties Not on Gas Grid (%)</label>
-        <output id="w_off_gas_grid_val">11.1</output>
+        <output id="w_off_gas_grid_val">9.1</output>
       </div>
-      <input id="w_off_gas_grid" type="range" min="0" max="100" step="0.1" value="11.1">
+      <input id="w_off_gas_grid" type="range" min="0" max="100" step="0.1" value="9.1">
+    </div>
+
+    <div class="control">
+      <div class="control-header">
+        <label for="w_housing_tenure">Housing Tenure Vulnerability</label>
+        <output id="w_housing_tenure_val">9.1</output>
+      </div>
+      <input id="w_housing_tenure" type="range" min="0" max="100" step="0.1" value="9.1">
+    </div>
+
+    <div class="control">
+      <div class="control-header">
+        <label for="w_overcrowding">Overcrowding</label>
+        <output id="w_overcrowding_val">9.1</output>
+      </div>
+      <input id="w_overcrowding" type="range" min="0" max="100" step="0.1" value="9.1">
     </div>
 
     <div class="legend" id="weight_total"></div>
@@ -203,7 +224,7 @@
 
   <section class="map-shell">
     <button class="mobile-sidebar-toggle" id="mobile_sidebar_toggle" type="button">
-      ⚙️ Weights &amp; Controls <span class="btn-badge">9</span>
+      ⚙️ Weights &amp; Controls <span class="btn-badge">11</span>
     </button>
     <div id="map"></div>
   </section>
@@ -230,7 +251,7 @@
   let fillOpacity = 0.82;
   let showUrban = true;
   let showRural = true;
-  const sliderIds = ["w_rural", "w_gp_pt", "w_gp_car", "w_no_car", "w_imd", "w_oac", "w_household", "w_fuel_poverty", "w_off_gas_grid"];
+  const sliderIds = ["w_rural", "w_gp_pt", "w_gp_car", "w_no_car", "w_imd", "w_oac", "w_household", "w_fuel_poverty", "w_off_gas_grid", "w_housing_tenure", "w_overcrowding"];
 
   function getCode(feature) {
     return feature?.properties?.CODE ?? feature?.properties?.LSOA21CD ?? feature?.properties?.lsoa21cd ?? feature?.properties?.LSOA_CODE ?? null;
@@ -250,8 +271,14 @@
       "IMD_2025_Decile": "IMD 2025 Decile (1 = Most Deprived)",
       "LSOAC_Risk": "Geodemographic Risk (LSOAC)",
       "Household_Vulnerability": "Household Isolation & Vulnerability",
+      "Housing_Tenure_Vulnerability": "Housing Tenure Vulnerability",
+      "Overcrowding_Risk": "Overcrowding Risk",
       "Fuel_Poverty_Pct": "Households in Fuel Poverty (%)",
       "Properties_Not_On_Gas_Grid_Pct": "Properties Not on Gas Grid (%)",
+      "Owner_Occupied_Pct": "Owner-Occupied Homes (%)",
+      "Social_Rented_Pct": "Social-Rented Homes (%)",
+      "Private_Rented_Pct": "Private-Rented Homes (%)",
+      "Overcrowded_HH_Pct": "Overcrowded Households (%)",
       "Single_Pensioner_HH_Pct": "Single Older Adults (66+) Living Alone (%)",
       "Non_Couple_HH_Pct": "Adults Not Living as a Couple (%)",
       "Pensioner_Couple_HH_Pct": "All-Pensioner Couples (66+) (%)",
@@ -281,7 +308,7 @@
     if (layerKey === "IMD_2025_Decile") {
       return "Viridis";
     }
-    if (layerKey === "Pct_65plus" || layerKey === "GP_Registration_Rate_Pct") {
+    if (layerKey === "Pct_65plus" || layerKey === "GP_Registration_Rate_Pct" || layerKey.includes("Occupied") || layerKey.includes("Rented") || layerKey === "Overcrowded_HH_Pct") {
       return "YlGnBu";
     }
     return "YlOrRd";
@@ -331,7 +358,7 @@
     if (value === null || value === undefined || !Number.isFinite(value)) {
       return "N/A";
     }
-    if (currentLayerKey === "Fuel_Poverty_Pct" || currentLayerKey === "Properties_Not_On_Gas_Grid_Pct") {
+    if (currentLayerKey.endsWith("_Pct") || currentLayerKey === "Pct_65plus") {
       return `${value.toFixed(1)}%`;
     }
     return Math.abs(value) >= 100 ? value.toFixed(1) : value.toFixed(4);
@@ -401,13 +428,13 @@
 
     if (effEl) {
       if (sum <= 0) {
-        effEl.textContent = "Effective weights: all 9 indicators weighted equally (~11.1% each).";
+        effEl.textContent = "Effective weights: all 11 indicators weighted equally (~9.1% each).";
         return;
       }
       const eff = sliderIds.map(id => ((values[id] / sum) * 100).toFixed(1) + "%");
       effEl.innerHTML =
         `<strong>Effective weights:</strong><br>` +
-        `Rural: ${eff[0]} | GP (PT): ${eff[1]} | GP (Car): ${eff[2]} | No Car: ${eff[3]} | IMD: ${eff[4]} | LSOAC: ${eff[5]} | Household: ${eff[6]} | Fuel Poverty: ${eff[7]} | Off Gas Grid: ${eff[8]}`;
+        `Rural: ${eff[0]} | GP (PT): ${eff[1]} | GP (Car): ${eff[2]} | No Car: ${eff[3]} | IMD: ${eff[4]} | LSOAC: ${eff[5]} | Household: ${eff[6]} | Fuel Poverty: ${eff[7]} | Off Gas Grid: ${eff[8]} | Housing Tenure: ${eff[9]} | Overcrowding: ${eff[10]}`;
     }
   }
 
@@ -438,8 +465,14 @@
       "IMD_2025_Decile": "IMD 2025 Decile (1 = Most Deprived)",
       "LSOAC_Risk": "Geodemographic Risk (LSOAC)",
       "Household_Vulnerability": "Household Isolation & Vulnerability",
+      "Housing_Tenure_Vulnerability": "Housing Tenure Vulnerability",
+      "Overcrowding_Risk": "Overcrowding Risk",
       "Fuel_Poverty_Pct": "Households in Fuel Poverty (%)",
       "Properties_Not_On_Gas_Grid_Pct": "Properties Not on Gas Grid (%)",
+      "Owner_Occupied_Pct": "Owner-Occupied Homes (%)",
+      "Social_Rented_Pct": "Social-Rented Homes (%)",
+      "Private_Rented_Pct": "Private-Rented Homes (%)",
+      "Overcrowded_HH_Pct": "Overcrowded Households (%)",
       "Single_Pensioner_HH_Pct": "Single Older Adults (66+) Living Alone (%)",
       "Non_Couple_HH_Pct": "Adults Not Living as a Couple (%)",
       "Pensioner_Couple_HH_Pct": "All-Pensioner Couples (66+) (%)",
@@ -480,6 +513,12 @@
         `<strong>Households with No Car/Van:</strong> ${detail.no_cars_pct !== null && detail.no_cars_pct !== undefined ? detail.no_cars_pct.toFixed(1) + "%" : "N/A"}<br>` +
         `<strong>Households in Fuel Poverty (2024):</strong> ${detail.fuel_poverty_pct !== null && detail.fuel_poverty_pct !== undefined ? detail.fuel_poverty_pct.toFixed(1) + "%" : "N/A"}<br>` +
         `<strong>Properties Not on Gas Grid (2024):</strong> ${detail.properties_not_on_gas_grid_pct !== null && detail.properties_not_on_gas_grid_pct !== undefined ? detail.properties_not_on_gas_grid_pct.toFixed(1) + "%" : "N/A"}<br>` +
+        `<strong>Owner-Occupied Homes (Census 2021):</strong> ${detail.owner_occupied_pct !== null && detail.owner_occupied_pct !== undefined ? detail.owner_occupied_pct.toFixed(1) + "%" : "N/A"}${detail.owner_occupied_hh_count !== null && detail.owner_occupied_hh_count !== undefined ? ` (${Math.round(detail.owner_occupied_hh_count).toLocaleString()})` : ""}<br>` +
+        `<strong>Social-Rented Homes (Census 2021):</strong> ${detail.social_rented_pct !== null && detail.social_rented_pct !== undefined ? detail.social_rented_pct.toFixed(1) + "%" : "N/A"}${detail.social_rented_hh_count !== null && detail.social_rented_hh_count !== undefined ? ` (${Math.round(detail.social_rented_hh_count).toLocaleString()})` : ""}<br>` +
+        `<strong>Private-Rented Homes (Census 2021):</strong> ${detail.private_rented_pct !== null && detail.private_rented_pct !== undefined ? detail.private_rented_pct.toFixed(1) + "%" : "N/A"}${detail.private_rented_hh_count !== null && detail.private_rented_hh_count !== undefined ? ` (${Math.round(detail.private_rented_hh_count).toLocaleString()})` : ""}<br>` +
+        `<strong>Overcrowded Households (Census 2021):</strong> ${detail.overcrowded_hh_pct !== null && detail.overcrowded_hh_pct !== undefined ? detail.overcrowded_hh_pct.toFixed(1) + "%" : "N/A"}${detail.overcrowded_hh_count !== null && detail.overcrowded_hh_count !== undefined ? ` (${Math.round(detail.overcrowded_hh_count).toLocaleString()})` : ""}<br>` +
+        `<strong>Housing Tenure Vulnerability:</strong> ${detail.housing_tenure_vulnerability !== null && detail.housing_tenure_vulnerability !== undefined ? detail.housing_tenure_vulnerability.toFixed(4) : "N/A"}<br>` +
+        `<strong>Overcrowding Risk:</strong> ${detail.overcrowding_risk !== null && detail.overcrowding_risk !== undefined ? detail.overcrowding_risk.toFixed(4) : "N/A"}<br>` +
         `<strong>IMD 2025 Decile:</strong> ${detail.imd_2025_decile !== null && detail.imd_2025_decile !== undefined ? detail.imd_2025_decile : "N/A"} (Rank: ${detail.imd_2025_rank ? detail.imd_2025_rank.toLocaleString() : "N/A"})<br>` +
         `<strong>LSOAC Subgroup:</strong> ${detail.subgroup_code ? detail.subgroup_code + ': ' + (detail.subgroup_name || "N/A") : "N/A"}<br>` +
         `<strong>LSOAC Group:</strong> ${detail.group_name || "N/A"}<br>` +
@@ -524,7 +563,7 @@
   function addMapLegendControl() {
     const legendControl = L.control({ position: "topright" });
     legendControl.onAdd = function onAdd() {
-      const container = L.DomUtil.create("div", "leaflet-bar");
+      const container = L.DomUtil.create("div", "leaflet-bar legend-control");
       container.style.background = "#ffffff";
       container.style.padding = "10px";
       container.style.minWidth = "260px";
@@ -540,6 +579,12 @@
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="No_Cars_Pct"> Households with No Car (%)</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Fuel_Poverty_Pct"> Households in Fuel Poverty (%)</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Properties_Not_On_Gas_Grid_Pct"> Properties Not on Gas Grid (%)</label>
+        <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Owner_Occupied_Pct"> Owner-Occupied Homes (%)</label>
+        <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Social_Rented_Pct"> Social-Rented Homes (%)</label>
+        <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Private_Rented_Pct"> Private-Rented Homes (%)</label>
+        <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Overcrowded_HH_Pct"> Overcrowded Households (%)</label>
+        <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Housing_Tenure_Vulnerability"> Housing Tenure Vulnerability</label>
+        <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Overcrowding_Risk"> Overcrowding Risk</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="IMD_2025_Decile"> IMD 2025 Decile</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="LSOAC_Risk"> Geodemographic Risk (LSOAC)</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Household_Vulnerability"> Household Isolation &amp; Vulnerability</label>

@@ -105,10 +105,18 @@
   }
   #map_legend {
     margin-bottom: 64px;
+
+    max-height: min(85vh, 900px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
   }
   @media (max-width: 700px) {
     #map_legend {
       margin-bottom: 58px;
+
+      max-height: 85vh;
     }
   }
 </style>

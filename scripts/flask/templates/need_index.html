@@ -443,7 +443,7 @@
   function addMapLegendControl() {
     const legendControl = L.control({ position: "topright" });
     legendControl.onAdd = function onAdd() {
-      const container = L.DomUtil.create("div", "leaflet-bar");
+      const container = L.DomUtil.create("div", "leaflet-bar legend-control");
       container.style.background = "#ffffff";
       container.style.padding = "10px";
       container.style.minWidth = "260px";

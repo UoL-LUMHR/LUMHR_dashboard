@@ -622,6 +622,16 @@
         border: 1px solid #d4dfe5 !important;
       }
 
+      /* Long map legends stay inside the map and can be scrolled without
+         affecting the page layout. */
+      .leaflet-bar.legend-control {
+        max-height: min(85vh, 900px);
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+      }
+
       /* Responsive Breakpoint: Tablet & Mobile (<= 960px) */
       @media (max-width: 960px) {
         body.home-layout {
@@ -702,10 +712,14 @@
         }
 
         .leaflet-bar {
-          max-height: 60vh;
+          max-height: 85vh;
           overflow-y: auto;
           font-size: 0.82rem;
           padding: 8px !important;
+        }
+
+        .leaflet-bar.legend-control {
+          max-height: 85vh;
         }
       }
 

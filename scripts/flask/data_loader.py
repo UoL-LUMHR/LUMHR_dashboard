@@ -19,6 +19,7 @@ from core.allocation import (
     prepare_smi,
 )
 from core.common import find_column, normalize_code, parse_numeric
+from core.housing import prepare_bedroom_occupancy, prepare_housing_tenure
 from core.samhi import join_samhi, prepare_samhi
 from core.travel import (
     build_2011_to_2021_lookup,
@@ -113,6 +114,14 @@ def get_paths(base_dir: Path) -> dict[str, Path]:
         / "datasets"
         / "properties_not_connected_to_gas_network"
         / "lincolnshire_properties_not_connected_to_gas_network_2024.csv",
+        "housing_tenure": base_dir
+        / "datasets"
+        / "TS054_tenure"
+        / "lincolnshire_ts054_tenure.csv",
+        "bedroom_occupancy": base_dir
+        / "datasets"
+        / "TS052_occupancy_rating_for_bedrooms"
+        / "lincolnshire_ts052_occupancy_rating_for_bedrooms.csv",
         "lsoa_2011_2021_lookup": base_dir
         / "datasets"
         / "lincolnshire_lsoa"
@@ -247,6 +256,8 @@ def load_raw_data(base_dir_str: str) -> dict[str, object]:
         "properties_not_connected_to_gas_network_raw": pd.read_csv(
             paths["properties_not_connected_to_gas_network"]
         ),
+        "housing_tenure_raw": pd.read_csv(paths["housing_tenure"]),
+        "bedroom_occupancy_raw": pd.read_csv(paths["bedroom_occupancy"]),
         "lsoa_2011_2021_lookup_raw": pd.read_csv(paths["lsoa_2011_2021_lookup"]),
         "lsoa_codes": lsoa_codes_df,
         "lsoa_centroids": lsoa_centroids_df,
@@ -323,6 +334,12 @@ def get_prepared_bundle_cached(base_dir_str: str) -> dict[str, object]:
         "Properties_Not_On_Gas_Grid_Pct",
     )
     lsoa_metrics = lsoa_metrics.merge(gas_network_df, on="LSOA_CODE", how="left")
+
+    housing_tenure_df = prepare_housing_tenure(raw["housing_tenure_raw"])
+    lsoa_metrics = lsoa_metrics.merge(housing_tenure_df, on="LSOA_CODE", how="left")
+
+    bedroom_occupancy_df = prepare_bedroom_occupancy(raw["bedroom_occupancy_raw"])
+    lsoa_metrics = lsoa_metrics.merge(bedroom_occupancy_df, on="LSOA_CODE", how="left")
 
     gp_marker_df = build_gp_marker_df(gp_loc_df, gp_master, mapping_df, lsoa_centroids_df, in_area_lsoa_codes)
 

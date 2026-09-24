@@ -15,6 +15,8 @@ RURAL_RISK_WEIGHT_KEYS = [
     "household_weight",
     "fuel_poverty_weight",
     "off_gas_grid_weight",
+    "housing_tenure_weight",
+    "overcrowding_weight",
 ]
 
 # Supergroup fallback mapping (0 to 1)
@@ -107,17 +109,19 @@ def normalize_rural_risk_weights(weight_values: dict[str, float]) -> dict[str, f
 
 def apply_rural_risk_index(
     lsoa_df: pd.DataFrame,
-    rural_weight: float = 11.1,
-    gp_pt_weight: float = 11.1,
-    gp_car_weight: float = 11.1,
-    no_car_weight: float = 11.1,
-    imd_weight: float = 11.1,
-    oac_weight: float = 11.1,
-    household_weight: float = 11.1,
-    fuel_poverty_weight: float = 11.1,
-    off_gas_grid_weight: float = 11.1,
+    rural_weight: float = 9.1,
+    gp_pt_weight: float = 9.1,
+    gp_car_weight: float = 9.1,
+    no_car_weight: float = 9.1,
+    imd_weight: float = 9.1,
+    oac_weight: float = 9.1,
+    household_weight: float = 9.1,
+    fuel_poverty_weight: float = 9.1,
+    off_gas_grid_weight: float = 9.1,
+    housing_tenure_weight: float = 9.1,
+    overcrowding_weight: float = 9.1,
 ) -> pd.DataFrame:
-    """Computes the multi-dimensional Rural Risk Index across 9 indicators (0-1, higher = higher risk)."""
+    """Computes the multi-dimensional Rural Risk Index across 11 indicators (0-1, higher = higher risk)."""
     normalized_weights = normalize_rural_risk_weights(
         {
             "rural_weight": rural_weight,
@@ -129,6 +133,8 @@ def apply_rural_risk_index(
             "household_weight": household_weight,
             "fuel_poverty_weight": fuel_poverty_weight,
             "off_gas_grid_weight": off_gas_grid_weight,
+            "housing_tenure_weight": housing_tenure_weight,
+            "overcrowding_weight": overcrowding_weight,
         }
     )
 
@@ -198,6 +204,19 @@ def apply_rural_risk_index(
     )
     out["Off_Gas_Grid_Normalized"] = minmax_scale(off_gas_grid_pct).fillna(0.5)
 
+    # 10. Housing tenure vulnerability (higher non-owner-occupied share = higher risk)
+    owner_occupied_pct = pd.to_numeric(
+        out.get("Owner_Occupied_Pct", pd.Series(np.nan, index=out.index)), errors="coerce"
+    )
+    non_owner_occupied_pct = (100.0 - owner_occupied_pct).clip(lower=0.0, upper=100.0)
+    out["Housing_Tenure_Vulnerability_Normalized"] = minmax_scale(non_owner_occupied_pct).fillna(0.5)
+
+    # 11. Overcrowding (higher share with fewer bedrooms than required = higher risk)
+    overcrowded_pct = pd.to_numeric(
+        out.get("Overcrowded_HH_Pct", pd.Series(np.nan, index=out.index)), errors="coerce"
+    )
+    out["Overcrowding_Normalized"] = minmax_scale(overcrowded_pct).fillna(0.5)
+
     # Composite Rural Risk Index. Suppressed/missing source indicators are
     # excluded for that LSOA and the remaining weights are renormalized.
     components = [
@@ -210,6 +229,8 @@ def apply_rural_risk_index(
         ("Household_Vulnerability_Normalized", "household_weight", hh_vuln.notna()),
         ("Fuel_Poverty_Normalized", "fuel_poverty_weight", fuel_poverty_pct.notna()),
         ("Off_Gas_Grid_Normalized", "off_gas_grid_weight", off_gas_grid_pct.notna()),
+        ("Housing_Tenure_Vulnerability_Normalized", "housing_tenure_weight", non_owner_occupied_pct.notna()),
+        ("Overcrowding_Normalized", "overcrowding_weight", overcrowded_pct.notna()),
     ]
     weighted_sum = pd.Series(0.0, index=out.index)
     available_weight = pd.Series(0.0, index=out.index)
