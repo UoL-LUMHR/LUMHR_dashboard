@@ -55,6 +55,14 @@ from core.allocation import (  # noqa: E402
     prepare_mapping,
     prepare_smi,
 )
+from external_features import (  # noqa: E402
+    ADDED_FEATURE_COLUMNS,
+    HOUSEHOLD_FEATURE_COLUMNS,
+    load_added_features,
+    load_household_features,
+    lagged_gas_feature,
+    merge_added_features,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -83,6 +91,15 @@ ISOLATION_SCALE_MAP = {
     "Rural town and fringe": 5,
     "Rural village and dispersed": 6,
 }
+
+SAMHI_HISTORY_FEATURES = {
+    "lag_1", "lag_2", "lag_3",
+    "delta_1", "delta_2", "acceleration",
+    "rolling_mean_3yr", "rolling_std_3yr", "rolling_min_3yr", "rolling_max_3yr",
+    "decile_lag_1",
+    "lad_mean_samhi_lag_1", "spatial_lag_1", "spatial_delta_1",
+}
+
 
 
 # File stems for model-specific feature explanations exposed by the Flask page.
@@ -155,31 +172,8 @@ def load_all_datasets(project_root: Path) -> Dict[str, pd.DataFrame]:
     ru_df["isolation_scale"] = ru_df["RUC21NM"].map(ISOLATION_SCALE_MAP).fillna(3).astype(float)
     ru_df["isolation_normalized"] = (ru_df["isolation_scale"] - 1.0) / 5.0
 
-    ts003_df = pd.DataFrame()
-    if ts003_path.exists():
-        try:
-            if "lincolnshire" in str(ts003_path).lower():
-                ts003_raw = pd.read_csv(ts003_path)
-                ts003_df = ts003_raw[["LSOA_Code", "One-person household_Pct", "Single family household: Lone parent family_Pct"]].rename(columns={
-                    "LSOA_Code": "LSOA21CD",
-                    "One-person household_Pct": "one_person_household_pct",
-                    "Single family household: Lone parent family_Pct": "lone_parent_pct"
-                })
-            else:
-                ts003_raw = pd.read_csv(ts003_path, skiprows=7)
-                code_s = ts003_raw["2021 super output area - lower layer"].str.split(":").str[0].str.strip()
-                one_p = pd.to_numeric(ts003_raw["%.1"], errors="coerce")
-                lone_p = pd.to_numeric(ts003_raw.get("%.10", ts003_raw["%.1"]), errors="coerce")
-                ts003_df = pd.DataFrame({"LSOA21CD": code_s, "one_person_household_pct": one_p, "lone_parent_pct": lone_p})
-        except Exception as e:
-            logger.warning(f"Could not load TS003: {e}")
-            ts003_df = pd.DataFrame()
-
-    if not ts003_df.empty:
-        ts003_df["LSOA21CD"] = ts003_df["LSOA21CD"].astype(str).str.strip()
-        ts003_df = ts003_df.groupby("LSOA21CD", as_index=False)[
-            ["one_person_household_pct", "lone_parent_pct"]
-        ].mean()
+    ts003_df = load_household_features(ts003_path)
+    added_features = load_added_features(datasets_dir)
 
     car_df = pd.read_csv(car_path) if car_path.exists() else pd.DataFrame()
 
@@ -246,6 +240,7 @@ def load_all_datasets(project_root: Path) -> Dict[str, pd.DataFrame]:
         "hosp": hosp_df,
         "gp": gp_df,
         "qof_access": qof_access_df,
+        "added_features": added_features,
         "geojson_path": geojson_path
     }
 
@@ -280,6 +275,7 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     hosp_df = data["hosp"]
     gp_df = data["gp"]
     qof_access_df = data["qof_access"]
+    added_features = data["added_features"]
 
     primary_lookup = lookup_df.sort_values("ObjectId").drop_duplicates(subset=["LSOA11CD"]).copy()
 
@@ -339,24 +335,12 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         master["gp_pt_time"] = np.nan
         master["gp_car_time"] = np.nan
 
-    # Household structure
+    # Detailed Census 2021 household composition.
     if not ts003_df.empty:
-        code_c = "LSOA_Code" if "LSOA_Code" in ts003_df.columns else "Lower layer Super Output Areas Code"
-        ts003_sub = ts003_df.copy()
-        if {"LSOA21CD", "one_person_household_pct", "lone_parent_pct"}.issubset(ts003_sub.columns):
-            ts003_sub = ts003_sub[["LSOA21CD", "one_person_household_pct", "lone_parent_pct"]].copy()
-        elif "One-person household_Pct" in ts003_sub.columns:
-            ts003_sub = ts003_sub[[code_c, "One-person household_Pct", "Single family household: Lone parent family_Pct"]].rename(columns={
-                code_c: "LSOA21CD",
-                "One-person household_Pct": "one_person_household_pct",
-                "Single family household: Lone parent family_Pct": "lone_parent_pct"
-            })
-        else:
-            ts003_sub = pd.DataFrame({"LSOA21CD": master["LSOA21CD"], "one_person_household_pct": np.nan, "lone_parent_pct": np.nan})
-        master = master.merge(ts003_sub, on="LSOA21CD", how="left")
+        master = master.merge(ts003_df, on="LSOA21CD", how="left")
     else:
-        master["one_person_household_pct"] = np.nan
-        master["lone_parent_pct"] = np.nan
+        for col in HOUSEHOLD_FEATURE_COLUMNS:
+            master[col] = np.nan
 
     # Car availability
     if not car_df.empty:
@@ -380,6 +364,9 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         for col in qof_cols:
             master[col] = np.nan
 
+    # Requested external housing, energy and household features.
+    master = merge_added_features(master, added_features)
+
     # Median impute all numeric features
     all_num_covariates = [
         "imd_2019_score", "imd_2025_rank", "imd_2025_decile",
@@ -388,7 +375,8 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         "one_person_household_pct", "lone_parent_pct",
         "gp_pt_time", "gp_car_time", "hosp_pt_time", "hosp_car_time",
         "no_car_pct", "isolation_scale", "isolation_normalized",
-        "qof_mh002_pct", "qof_mh021_pct", "qof_mh_pca_pct", "qof_dep_pca_pct", "qof_dep004_pct"
+        "qof_mh002_pct", "qof_mh021_pct", "qof_mh_pca_pct", "qof_dep_pca_pct", "qof_dep004_pct",
+        *[c for c in ADDED_FEATURE_COLUMNS if c != "gas_grid_disconnection_pct"]
     ]
     for col in all_num_covariates:
         if col in master.columns:
@@ -509,11 +497,21 @@ def create_panel_dataset(
             "qof_mh021_pct": df["qof_mh021_pct"],
             "qof_mh_pca_pct": df["qof_mh_pca_pct"],
             "qof_dep_pca_pct": df["qof_dep_pca_pct"],
-            "qof_dep004_pct": df["qof_dep004_pct"]
+            "qof_dep004_pct": df["qof_dep004_pct"],
+            "gas_grid_disconnection_pct": lagged_gas_feature(df, t),
         })
+        for feature in ADDED_FEATURE_COLUMNS:
+            if feature != "gas_grid_disconnection_pct":
+                year_records[feature] = df[feature].to_numpy()
         records.append(year_records)
 
-    return pd.concat(records, ignore_index=True)
+    panel_df = pd.concat(records, ignore_index=True)
+    if "gas_grid_disconnection_pct" in panel_df:
+        gas_median = panel_df["gas_grid_disconnection_pct"].median()
+        panel_df["gas_grid_disconnection_pct"] = panel_df["gas_grid_disconnection_pct"].fillna(
+            gas_median if not pd.isna(gas_median) else 0.0
+        )
+    return panel_df
 
 
 def evaluate_predictions(y_true: np.ndarray, y_pred: np.ndarray, y_lag1: np.ndarray) -> Dict[str, float]:
@@ -595,6 +593,19 @@ def compute_shap_importance(
         "one_person_household_pct": "4_Demographics_Vulnerability",
         "lone_parent_pct": "4_Demographics_Vulnerability"
     }
+
+    for feature in ADDED_FEATURE_COLUMNS:
+        if feature in {"fuel_poverty_pct", "gas_grid_disconnection_pct"}:
+            domain_mapping[feature] = "3_Deprivation_Economics"
+        elif feature in {"one_person_household_pct", "one_person_aged_66_plus_pct", "one_person_other_pct",
+                         "pensioner_couple_household_pct", "married_no_children_pct",
+                         "married_dependent_children_pct", "cohabiting_household_pct",
+                         "cohabiting_dependent_children_pct", "lone_parent_pct",
+                         "lone_parent_dependent_children_pct", "other_household_types_pct",
+                         "other_households_dependent_children_pct"}:
+            domain_mapping[feature] = "4_Demographics_Vulnerability"
+        else:
+            domain_mapping[feature] = "6_Housing"
 
     df_shap = pd.DataFrame({
         "feature": feature_names,
@@ -679,6 +690,19 @@ def compute_linear_shap_importance(
         "qof_dep004_pct": "5_Healthcare_Service",
     }
 
+    for feature in ADDED_FEATURE_COLUMNS:
+        if feature in {"fuel_poverty_pct", "gas_grid_disconnection_pct"}:
+            domain_mapping[feature] = "3_Deprivation_Economics"
+        elif feature in {"one_person_household_pct", "one_person_aged_66_plus_pct", "one_person_other_pct",
+                         "pensioner_couple_household_pct", "married_no_children_pct",
+                         "married_dependent_children_pct", "cohabiting_household_pct",
+                         "cohabiting_dependent_children_pct", "lone_parent_pct",
+                         "lone_parent_dependent_children_pct", "other_household_types_pct",
+                         "other_households_dependent_children_pct"}:
+            domain_mapping[feature] = "4_Demographics_Vulnerability"
+        else:
+            domain_mapping[feature] = "6_Housing"
+
     df_shap = pd.DataFrame({
         "feature": feature_names,
         "mean_abs_shap": mean_abs_shap,
@@ -725,7 +749,8 @@ def run_scope_benchmark(
     feature_cols: List[str],
     lookup_df: pd.DataFrame,
     output_dir: Path,
-    experiment_set: int = 1
+    experiment_set: int = 1,
+    history_mode: str = "with_history",
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Execute one temporal benchmark with TreeSHAP and LinearSHAP."""
     if experiment_set == 1:
@@ -735,7 +760,7 @@ def run_scope_benchmark(
     else:
         raise ValueError("experiment_set must be 1 or 2")
     logger.info(f"\n=======================================================")
-    logger.info(f" EXECUTING MULTIMODAL BENCHMARK: {scope.upper()}")
+    logger.info(f" EXECUTING MULTIMODAL BENCHMARK: {scope.upper()} ({history_mode})")
     logger.info(f"=======================================================")
 
     if scope == "lincolnshire":
@@ -886,6 +911,7 @@ def run_scope_benchmark(
             metrics_records.append({"Scope": scope, "Split": f"Test ({yr})", "Model": name, **evaluate_predictions(sub_yr["target"].values, sub_pred, sub_yr["lag_1"].values)})
 
     metrics_df = pd.DataFrame(metrics_records)
+    metrics_df["History_Mode"] = history_mode
 
     # Generate a model-specific explanation for every fitted model.
     shap_sample = X_test[:1000] if len(X_test) > 1000 else X_test
@@ -944,16 +970,17 @@ def run_scope_benchmark(
 
     # Export
     suffix = "2020_2022" if experiment_set == 1 else "pre_covid_2018_2019"
-    metrics_df.to_csv(output_dir / f"multimodal_metrics_{suffix}_{scope}.csv", index=False)
-    expanded_preds.to_csv(output_dir / f"multimodal_predictions_{suffix}_{scope}.csv", index=False)
+    file_suffix = suffix if history_mode == "with_history" else f"{suffix}_without_history"
+    metrics_df.to_csv(output_dir / f"multimodal_metrics_{file_suffix}_{scope}.csv", index=False)
+    expanded_preds.to_csv(output_dir / f"multimodal_predictions_{file_suffix}_{scope}.csv", index=False)
     # Keep the legacy LightGBM filename and write explicit model-specific files.
-    df_shap.to_csv(output_dir / f"shap_feature_importance_{suffix}_{scope}.csv", index=False)
+    df_shap.to_csv(output_dir / f"shap_feature_importance_{file_suffix}_{scope}.csv", index=False)
     for model_name, (df_model_explanation, _) in model_explanations.items():
         stem = SHAP_FILE_STEMS[model_name]
         df_model_explanation.to_csv(
-            output_dir / f"shap_feature_importance_{stem}_{suffix}_{scope}.csv", index=False
+            output_dir / f"shap_feature_importance_{stem}_{file_suffix}_{scope}.csv", index=False
         )
-    df_shap_elasticnet.to_csv(output_dir / f"shap_feature_importance_elasticnet_{suffix}_{scope}.csv", index=False)
+    df_shap_elasticnet.to_csv(output_dir / f"shap_feature_importance_elasticnet_{file_suffix}_{scope}.csv", index=False)
 
     return metrics_df, expanded_preds, df_shap
 
@@ -964,6 +991,8 @@ def main():
     parser.add_argument("--experiment-set", type=int, choices=[1, 2], default=1,
                         help="1=COVID-era test (2020-2022), 2=pre-COVID test (2018-2019)")
     parser.add_argument("--output-dir", type=str, default="scripts/machine_learning/samhi/results")
+    parser.add_argument("--history", choices=["with", "without", "both"], default="with",
+                        help="Use previous-SAMHI predictors, exclude them, or run both experiments")
     args = parser.parse_args()
 
     project_root = get_project_root()
@@ -987,15 +1016,25 @@ def main():
         "one_person_household_pct", "lone_parent_pct",
         "is_rural", "isolation_scale", "isolation_normalized",
         "avg_download_speed", "gp_pt_time", "gp_car_time", "hosp_pt_time", "hosp_car_time", "no_car_pct",
-        "qof_mh002_pct", "qof_mh021_pct", "qof_mh_pca_pct", "qof_dep_pca_pct", "qof_dep004_pct"
+        "qof_mh002_pct", "qof_mh021_pct", "qof_mh_pca_pct", "qof_dep_pca_pct", "qof_dep004_pct",
+        *ADDED_FEATURE_COLUMNS,
     ]
+    external_only_cols = [c for c in feature_cols if c not in SAMHI_HISTORY_FEATURES]
 
     scopes = ["lincolnshire", "national"] if args.scope == "both" else [args.scope]
+    history_modes = ["with_history", "without_history"] if args.history == "both" else [
+        "with_history" if args.history == "with" else "without_history"
+    ]
     all_metrics = []
 
     for sc in scopes:
-        m_df, _, _ = run_scope_benchmark(panel_df, sc, feature_cols, data["lookup"], output_dir, args.experiment_set)
-        all_metrics.append(m_df)
+        for history_mode in history_modes:
+            selected_cols = feature_cols if history_mode == "with_history" else external_only_cols
+            m_df, _, _ = run_scope_benchmark(
+                panel_df, sc, selected_cols, data["lookup"], output_dir,
+                args.experiment_set, history_mode=history_mode
+            )
+            all_metrics.append(m_df)
 
     if len(all_metrics) > 1:
         comp_df = pd.concat(all_metrics, ignore_index=True)

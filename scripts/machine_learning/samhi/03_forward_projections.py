@@ -47,6 +47,14 @@ from core.allocation import (  # noqa: E402
     prepare_mapping,
     prepare_smi,
 )
+from external_features import (  # noqa: E402
+    ADDED_FEATURE_COLUMNS,
+    HOUSEHOLD_FEATURE_COLUMNS,
+    load_added_features,
+    load_household_features,
+    lagged_gas_feature,
+    merge_added_features,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -135,31 +143,8 @@ def load_all_datasets(project_root: Path) -> Dict[str, pd.DataFrame]:
     ru_df["isolation_scale"] = ru_df["RUC21NM"].map(ISOLATION_SCALE_MAP).fillna(3).astype(float)
     ru_df["isolation_normalized"] = (ru_df["isolation_scale"] - 1.0) / 5.0
 
-    ts003_df = pd.DataFrame()
-    if ts003_path.exists():
-        try:
-            if "lincolnshire" in str(ts003_path).lower():
-                ts003_raw = pd.read_csv(ts003_path)
-                ts003_df = ts003_raw[["LSOA_Code", "One-person household_Pct", "Single family household: Lone parent family_Pct"]].rename(columns={
-                    "LSOA_Code": "LSOA21CD",
-                    "One-person household_Pct": "one_person_household_pct",
-                    "Single family household: Lone parent family_Pct": "lone_parent_pct"
-                })
-            else:
-                ts003_raw = pd.read_csv(ts003_path, skiprows=7)
-                code_s = ts003_raw["2021 super output area - lower layer"].str.split(":").str[0].str.strip()
-                one_p = pd.to_numeric(ts003_raw["%.1"], errors="coerce")
-                lone_p = pd.to_numeric(ts003_raw.get("%.10", ts003_raw["%.1"]), errors="coerce")
-                ts003_df = pd.DataFrame({"LSOA21CD": code_s, "one_person_household_pct": one_p, "lone_parent_pct": lone_p})
-        except Exception as e:
-            logger.warning(f"Could not load TS003: {e}")
-            ts003_df = pd.DataFrame()
-
-    if not ts003_df.empty:
-        ts003_df["LSOA21CD"] = ts003_df["LSOA21CD"].astype(str).str.strip()
-        ts003_df = ts003_df.groupby("LSOA21CD", as_index=False)[
-            ["one_person_household_pct", "lone_parent_pct"]
-        ].mean()
+    ts003_df = load_household_features(ts003_path)
+    added_features = load_added_features(datasets_dir)
 
     car_df = pd.read_csv(car_path) if car_path.exists() else pd.DataFrame()
 
@@ -226,6 +211,7 @@ def load_all_datasets(project_root: Path) -> Dict[str, pd.DataFrame]:
         "hosp": hosp_df,
         "gp": gp_df,
         "qof_access": qof_access_df,
+        "added_features": added_features,
         "geojson_path": geojson_path
     }
 
@@ -260,6 +246,7 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     hosp_df = data["hosp"]
     qof_access_df = data["qof_access"]
     gp_df = data["gp"]
+    added_features = data["added_features"]
 
     primary_lookup = lookup_df.sort_values("ObjectId").drop_duplicates(subset=["LSOA11CD"]).copy()
 
@@ -319,24 +306,12 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         master["gp_pt_time"] = np.nan
         master["gp_car_time"] = np.nan
 
-    # Household structure
+    # Detailed Census 2021 household composition.
     if not ts003_df.empty:
-        code_c = "LSOA_Code" if "LSOA_Code" in ts003_df.columns else "Lower layer Super Output Areas Code"
-        ts003_sub = ts003_df.copy()
-        if {"LSOA21CD", "one_person_household_pct", "lone_parent_pct"}.issubset(ts003_sub.columns):
-            ts003_sub = ts003_sub[["LSOA21CD", "one_person_household_pct", "lone_parent_pct"]].copy()
-        elif "One-person household_Pct" in ts003_sub.columns:
-            ts003_sub = ts003_sub[[code_c, "One-person household_Pct", "Single family household: Lone parent family_Pct"]].rename(columns={
-                code_c: "LSOA21CD",
-                "One-person household_Pct": "one_person_household_pct",
-                "Single family household: Lone parent family_Pct": "lone_parent_pct"
-            })
-        else:
-            ts003_sub = pd.DataFrame({"LSOA21CD": master["LSOA21CD"], "one_person_household_pct": np.nan, "lone_parent_pct": np.nan})
-        master = master.merge(ts003_sub, on="LSOA21CD", how="left")
+        master = master.merge(ts003_df, on="LSOA21CD", how="left")
     else:
-        master["one_person_household_pct"] = np.nan
-        master["lone_parent_pct"] = np.nan
+        for col in HOUSEHOLD_FEATURE_COLUMNS:
+            master[col] = np.nan
 
     # Car availability
     if not car_df.empty:
@@ -360,6 +335,9 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         for col in qof_cols:
             master[col] = np.nan
 
+    # Requested external housing, energy and household features.
+    master = merge_added_features(master, added_features)
+
     # Median impute all numeric features
     all_num_covariates = [
         "imd_2019_score", "imd_2025_rank", "imd_2025_decile",
@@ -369,6 +347,7 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         "gp_pt_time", "gp_car_time", "hosp_pt_time", "hosp_car_time",
         "no_car_pct", "isolation_scale", "isolation_normalized",
         "qof_mh002_pct", "qof_mh021_pct", "qof_mh_pca_pct", "qof_dep_pca_pct", "qof_dep004_pct",
+        *[c for c in ADDED_FEATURE_COLUMNS if c != "gas_grid_disconnection_pct"]
     ]
     for col in all_num_covariates:
         if col in master.columns:
@@ -489,11 +468,21 @@ def create_training_panel(
             "qof_mh021_pct": df["qof_mh021_pct"],
             "qof_mh_pca_pct": df["qof_mh_pca_pct"],
             "qof_dep_pca_pct": df["qof_dep_pca_pct"],
-            "qof_dep004_pct": df["qof_dep004_pct"]
+            "qof_dep004_pct": df["qof_dep004_pct"],
+            "gas_grid_disconnection_pct": lagged_gas_feature(df, t),
         })
+        for feature in ADDED_FEATURE_COLUMNS:
+            if feature != "gas_grid_disconnection_pct":
+                year_records[feature] = df[feature].to_numpy()
         records.append(year_records)
 
-    return pd.concat(records, ignore_index=True)
+    panel_df = pd.concat(records, ignore_index=True)
+    if "gas_grid_disconnection_pct" in panel_df:
+        gas_median = panel_df["gas_grid_disconnection_pct"].median()
+        panel_df["gas_grid_disconnection_pct"] = panel_df["gas_grid_disconnection_pct"].fillna(
+            gas_median if not pd.isna(gas_median) else 0.0
+        )
+    return panel_df
 
 
 MODEL_PREDICTION_SLUGS = {
@@ -713,6 +702,12 @@ def run_recursive_forward_projections(
                 "qof_dep_pca_pct": master_df["qof_dep_pca_pct"],
                 "qof_dep004_pct": master_df["qof_dep004_pct"],
             })
+            for feature in ADDED_FEATURE_COLUMNS:
+                feat_df[feature] = (
+                    lagged_gas_feature(master_df, t)
+                    if feature == "gas_grid_disconnection_pct"
+                    else master_df[feature].to_numpy()
+                )
 
             if name == "AR Baseline (Persistence)":
                 pred = l1
@@ -849,6 +844,7 @@ def main():
         "one_person_household_pct", "lone_parent_pct",
         "is_rural", "isolation_scale", "isolation_normalized",
         "avg_download_speed", "gp_pt_time", "gp_car_time", "hosp_pt_time", "hosp_car_time", "no_car_pct",
+        *ADDED_FEATURE_COLUMNS,
     ]
 
     scopes = ["lincolnshire", "national"] if args.scope == "both" else [args.scope]

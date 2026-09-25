@@ -10,7 +10,7 @@ The Small Area Mental Health Index (SAMHI) is a composite index of mental health
 
 This folder contains the machine learning experiments exploring:
 1. **Autoregressive baseline models** (Phase 1): Predicting future SAMHI using historical temporal lags, momentum, volatility, and decile history.
-2. **Multimodal integration** (Phase 2): Incorporating external socioeconomic, demographic, travel accessibility, service-quality, and spatial-neighbour features.
+2. **Multimodal integration** (Phase 2): Incorporating external socioeconomic, demographic, housing, energy, travel accessibility, service-quality, and spatial-neighbour features.
 3. **Forward projections** (Phase 3): Recursively projecting 2023–2025 using ElasticNet as the primary model, with Ridge and LightGBM retained for comparison.
 
 ---
@@ -68,7 +68,7 @@ python scripts/machine_learning/samhi/01_baseline_autoregressive.py --scope both
 ```
 
 ### 4. Run Phase 2 Multimodal & Spatial Models
-Trains multimodal models combining SAMHI history with IMD 2019 deprivation, disability, unemployment, rural/urban classification, healthcare travel times, QOF service-quality measures, and spatial-neighbour lags:
+Trains multimodal models combining SAMHI history with IMD 2019 deprivation, disability, unemployment, rural/urban classification, healthcare travel times, QOF service-quality measures, housing tenure and bedroom occupancy, detailed household composition, fuel poverty, annual gas-grid disconnection, and spatial-neighbour lags:
 
 ```bash
 # Run Lincolnshire multimodal models
@@ -77,12 +77,18 @@ python scripts/machine_learning/samhi/02_multimodal_features.py --scope lincolns
 # Run National multimodal models (164,000+ rows)
 python scripts/machine_learning/samhi/02_multimodal_features.py --scope national
 
-# Run both scopes with head-to-head baseline comparisons, TreeSHAP, and ElasticNet LinearSHAP
-python scripts/machine_learning/samhi/02_multimodal_features.py --scope both
+# Run both scopes with the normal history-inclusive multimodal model
+python scripts/machine_learning/samhi/02_multimodal_features.py --scope both --history with
+
+# Run external-data-only models (no previous SAMHI predictors)
+python scripts/machine_learning/samhi/02_multimodal_features.py --scope both --history without
+
+# Run both history-inclusive and external-only experiments
+python scripts/machine_learning/samhi/02_multimodal_features.py --scope both --history both
 
 # Run the second, pre-COVID experiment set (2018-2019 test years)
 python scripts/machine_learning/samhi/01_baseline_autoregressive.py --scope both --experiment-set 2
-python scripts/machine_learning/samhi/02_multimodal_features.py --scope both --experiment-set 2
+python scripts/machine_learning/samhi/02_multimodal_features.py --scope both --experiment-set 2 --history both
 ```
 
 ### 5. Run Phase 3 Multi-Year Forward Projections (2023 - 2025)
@@ -148,6 +154,20 @@ When using the Flask web application to view SAMHI predictions and projections, 
 * **Multimodal XGBoost**: Regularized gradient boosted decision trees
 * **Multimodal CatBoost**: Symmetric oblivious decision tree ensemble
 * **Explainable Boosting Machine (EBM)**: Glass-box Generalized Additive Model with Pairwise Interactions ($y = \sum f(x_i) + \sum f(x_i, x_j)$)
+
+### Added external feature groups
+
+The multimodal benchmark accepts `--history with`, `--history without`, or `--history both`. The `without` setting removes local, temporal, district and neighbour SAMHI-derived predictors while retaining the external data.
+
+The multimodal benchmark and forward-projection pipeline now also include:
+
+* Fuel-poverty percentage.
+* Annual gas-grid disconnection percentage, lagged by one year for each SAMHI target year.
+* Tenure percentages: owner occupied, shared ownership, social rented, private rented, and rent free.
+* Bedroom occupancy percentages, including total overcrowding.
+* Detailed Census household-composition percentages, including older people living alone, pensioner couples, family composition, and dependent-child categories.
+
+Tenure, occupancy, and household-composition data are Census 2021 snapshots. Fuel-poverty data are 2024 and cover England at LSOA level. Gas-grid data are annual 2015–2024 from the Great Britain LSOA workbook; the England SAMHI geographies are matched by LSOA code. These availability dates should be considered when interpreting historical backtests.
 
 ### Metrics Reported
 * **RMSE** (Root Mean Squared Error)
