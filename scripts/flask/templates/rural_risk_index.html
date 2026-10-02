@@ -14,7 +14,7 @@
     <p class="muted">Multi-dimensional rural risk and vulnerability model across all 435 Lincolnshire LSOAs.</p>
 
     <div class="quick-actions-bar">
-      <button class="btn-action-sm" id="btn_reset_weights" type="button" title="Reset all 11 indicator weights equally">↺ Reset Weights (~9.1% each)</button>
+      <button class="btn-action-sm" id="btn_reset_weights" type="button" title="Reset all 13 indicator weights equally">↺ Reset Weights (~7.7% each)</button>
     </div>
 
     <details class="control">
@@ -26,7 +26,7 @@
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Index vs Single Indicator:</strong></p>
       <ul class="muted" style="margin-top:0; padding-left:1.1rem;">
         <li><strong>Rural Isolation Score (Single Indicator):</strong> Measures purely physical settlement remoteness and distance from major urban centres based on DEFRA's 2021 Rural/Urban Classification (0 = Urban to 1 = Smaller remote rural). It does not factor in vehicle access, journey times to GP surgeries, or socio-economic deprivation.</li>
-        <li><strong>Rural Risk Index (Overall Composite):</strong> The overall weighted combination of all 11 indicators together, capturing cumulative vulnerability, practical service barriers, and energy vulnerability for an area.</li>
+        <li><strong>Rural Risk Index (Overall Composite):</strong> The overall weighted combination of 13 indicators, including separate public DLA and PIP claimant-rate signals, capturing cumulative vulnerability, practical service barriers, and energy vulnerability for an area.</li>
       </ul>
 
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Indicators:</strong></p>
@@ -44,11 +44,12 @@
         <li><strong>Overcrowding:</strong> Min-max normalised percentage of households with fewer bedrooms than required (Census 2021).</li>
         <li><strong>Housing Tenure and Overcrowding:</strong> The composite uses two derived risk indicators: non-owner-occupied households and overcrowded households. The detailed tenure percentages remain available as standalone map layers.</li>
         <li><strong>Missing gas-grid values:</strong> Source blanks remain unavailable on the standalone map layer and are excluded from that LSOA's composite calculation, with the remaining weights renormalised.</li>
+        <li><strong>DWP DLA/PIP indicators:</strong> Separate 2025 public DLA and PIP claimant rates are included as independently weighted vulnerability indicators and remain available as standalone layers.</li>
       </ul>
 
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Formula:</strong></p>
       <ul class="muted" style="margin-top:0; padding-left:1.1rem;">
-        <li><strong>Rural Risk Index</strong> = (Rural_Isolation &times; w_rural) + (GP_PT_Travel &times; w_gp_pt) + (GP_Car_Travel &times; w_gp_car) + (No_Car &times; w_no_car) + (IMD_Deprivation &times; w_imd) + (LSOAC_Risk &times; w_oac) + (Household_Vuln &times; w_household) + (Fuel_Poverty &times; w_fuel_poverty) + (Off_Gas_Grid &times; w_off_gas_grid) + (Housing_Tenure &times; w_housing_tenure) + (Overcrowding &times; w_overcrowding)</li>
+        <li><strong>Rural Risk Index</strong> = the 11 original rural/access indicators plus separate DLA and PIP claimant-rate indicators, each with its own weight.</li>
       </ul>
     </details>
 
@@ -67,6 +68,7 @@
         <li><a href="https://www.ons.gov.uk/datasets/TS054/editions/2021/versions/4" target="_blank" rel="noopener noreferrer">ONS Census 2021: Tenure (Table TS054)</a></li>
         <li><a href="https://www.ons.gov.uk/datasets/TS052/editions/2021/versions/5" target="_blank" rel="noopener noreferrer">ONS Census 2021: Occupancy Rating for Bedrooms (Table TS052)</a></li>
         <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/patients-registered-at-a-gp-practice/july-2026" target="_blank" rel="noopener noreferrer">NHS Digital: Patients Registered at a GP Practice (July 2026)</a></li>
+        <li><a href="https://stat-xplore.dwp.gov.uk/" target="_blank" rel="noopener noreferrer">DWP Stat-Xplore</a> — DLA/PIP mental-health and learning-difficulty claimant snapshots data.</li>
       </ul>
     </details>
 
@@ -125,89 +127,105 @@
     <div class="control">
       <div class="control-header">
         <label for="w_rural">Rural / Urban Isolation</label>
-        <output id="w_rural_val">9.1</output>
+        <output id="w_rural_val">7.7</output>
       </div>
-      <input id="w_rural" type="range" min="0" max="100" step="0.1" value="9.1">
+      <input id="w_rural" type="range" min="0" max="100" step="0.1" value="7.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_gp_pt">GP Travel Time (PT / Walk)</label>
-        <output id="w_gp_pt_val">9.1</output>
+        <output id="w_gp_pt_val">7.7</output>
       </div>
-      <input id="w_gp_pt" type="range" min="0" max="100" step="0.1" value="9.1">
+      <input id="w_gp_pt" type="range" min="0" max="100" step="0.1" value="7.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_gp_car">GP Travel Time (Car)</label>
-        <output id="w_gp_car_val">9.1</output>
+        <output id="w_gp_car_val">7.7</output>
       </div>
-      <input id="w_gp_car" type="range" min="0" max="100" step="0.1" value="9.1">
+      <input id="w_gp_car" type="range" min="0" max="100" step="0.1" value="7.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_no_car">No Car Ownership (%)</label>
-        <output id="w_no_car_val">9.1</output>
+        <output id="w_no_car_val">7.7</output>
       </div>
-      <input id="w_no_car" type="range" min="0" max="100" step="0.1" value="9.1">
+      <input id="w_no_car" type="range" min="0" max="100" step="0.1" value="7.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_imd">Deprivation (IMD 2025)</label>
-        <output id="w_imd_val">9.1</output>
+        <output id="w_imd_val">7.7</output>
       </div>
-      <input id="w_imd" type="range" min="0" max="100" step="0.1" value="9.1">
+      <input id="w_imd" type="range" min="0" max="100" step="0.1" value="7.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_oac">Geodemographic Profile (LSOAC)</label>
-        <output id="w_oac_val">9.1</output>
+        <output id="w_oac_val">7.7</output>
       </div>
-      <input id="w_oac" type="range" min="0" max="100" step="0.1" value="9.1">
+      <input id="w_oac" type="range" min="0" max="100" step="0.1" value="7.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_household">Household Isolation / Solitary Living</label>
-        <output id="w_household_val">9.1</output>
+        <output id="w_household_val">7.7</output>
       </div>
-      <input id="w_household" type="range" min="0" max="100" step="0.1" value="9.1">
+      <input id="w_household" type="range" min="0" max="100" step="0.1" value="7.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_fuel_poverty">Fuel Poverty (%)</label>
-        <output id="w_fuel_poverty_val">9.1</output>
+        <output id="w_fuel_poverty_val">7.7</output>
       </div>
-      <input id="w_fuel_poverty" type="range" min="0" max="100" step="0.1" value="9.1">
+      <input id="w_fuel_poverty" type="range" min="0" max="100" step="0.1" value="7.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_off_gas_grid">Properties Not on Gas Grid (%)</label>
-        <output id="w_off_gas_grid_val">9.1</output>
+        <output id="w_off_gas_grid_val">7.7</output>
       </div>
-      <input id="w_off_gas_grid" type="range" min="0" max="100" step="0.1" value="9.1">
+      <input id="w_off_gas_grid" type="range" min="0" max="100" step="0.1" value="7.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_housing_tenure">Housing Tenure Vulnerability</label>
-        <output id="w_housing_tenure_val">9.1</output>
+        <output id="w_housing_tenure_val">7.7</output>
       </div>
-      <input id="w_housing_tenure" type="range" min="0" max="100" step="0.1" value="9.1">
+      <input id="w_housing_tenure" type="range" min="0" max="100" step="0.1" value="7.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="w_overcrowding">Overcrowding</label>
-        <output id="w_overcrowding_val">9.1</output>
+        <output id="w_overcrowding_val">7.7</output>
       </div>
-      <input id="w_overcrowding" type="range" min="0" max="100" step="0.1" value="9.1">
+      <input id="w_overcrowding" type="range" min="0" max="100" step="0.1" value="7.7">
+    </div>
+
+    <div class="control">
+      <div class="control-header">
+        <label for="w_dla">DWP DLA Rate (%)</label>
+        <output id="w_dla_val">7.7</output>
+      </div>
+      <input id="w_dla" type="range" min="0" max="100" step="0.1" value="7.7">
+    </div>
+
+    <div class="control">
+      <div class="control-header">
+        <label for="w_pip">DWP PIP Rate (%)</label>
+        <output id="w_pip_val">7.7</output>
+      </div>
+      <input id="w_pip" type="range" min="0" max="100" step="0.1" value="7.7">
     </div>
 
     <div class="legend" id="weight_total"></div>
@@ -224,7 +242,7 @@
 
   <section class="map-shell">
     <button class="mobile-sidebar-toggle" id="mobile_sidebar_toggle" type="button">
-      ⚙️ Weights &amp; Controls <span class="btn-badge">11</span>
+      ⚙️ Weights &amp; Controls <span class="btn-badge">13</span>
     </button>
     <div id="map"></div>
   </section>
@@ -251,7 +269,7 @@
   let fillOpacity = 0.82;
   let showUrban = true;
   let showRural = true;
-  const sliderIds = ["w_rural", "w_gp_pt", "w_gp_car", "w_no_car", "w_imd", "w_oac", "w_household", "w_fuel_poverty", "w_off_gas_grid", "w_housing_tenure", "w_overcrowding"];
+  const sliderIds = ["w_rural", "w_gp_pt", "w_gp_car", "w_no_car", "w_imd", "w_oac", "w_household", "w_fuel_poverty", "w_off_gas_grid", "w_housing_tenure", "w_overcrowding", "w_dla", "w_pip"];
 
   function getCode(feature) {
     return feature?.properties?.CODE ?? feature?.properties?.LSOA21CD ?? feature?.properties?.lsoa21cd ?? feature?.properties?.LSOA_CODE ?? null;
@@ -284,7 +302,9 @@
       "Pensioner_Couple_HH_Pct": "All-Pensioner Couples (66+) (%)",
       "Lone_Parent_HH_Pct": "Lone Parent Families with Dep Children (%)",
       "Pct_65plus": "Older Adults (65+) %",
-      "GP_Registration_Rate_Pct": "GP Registration Coverage (%)"
+      "GP_Registration_Rate_Pct": "GP Registration Coverage (%)",
+      "DWP_DLA_Rate_Pct": "DWP DLA rate (%)",
+      "DWP_PIP_Rate_Pct": "DWP PIP rate (%)"
     })[currentLayerKey] || "Map Layer";
   }
 
@@ -428,13 +448,13 @@
 
     if (effEl) {
       if (sum <= 0) {
-        effEl.textContent = "Effective weights: all 11 indicators weighted equally (~9.1% each).";
+        effEl.textContent = "Effective weights: all 13 indicators weighted equally (~7.7% each).";
         return;
       }
       const eff = sliderIds.map(id => ((values[id] / sum) * 100).toFixed(1) + "%");
       effEl.innerHTML =
         `<strong>Effective weights:</strong><br>` +
-        `Rural: ${eff[0]} | GP (PT): ${eff[1]} | GP (Car): ${eff[2]} | No Car: ${eff[3]} | IMD: ${eff[4]} | LSOAC: ${eff[5]} | Household: ${eff[6]} | Fuel Poverty: ${eff[7]} | Off Gas Grid: ${eff[8]} | Housing Tenure: ${eff[9]} | Overcrowding: ${eff[10]}`;
+        `Rural: ${eff[0]} | GP (PT): ${eff[1]} | GP (Car): ${eff[2]} | No Car: ${eff[3]} | IMD: ${eff[4]} | LSOAC: ${eff[5]} | Household: ${eff[6]} | Fuel Poverty: ${eff[7]} | Off Gas Grid: ${eff[8]} | Housing Tenure: ${eff[9]} | Overcrowding: ${eff[10]} | DLA: ${eff[11]} | PIP: ${eff[12]}`;
     }
   }
 
@@ -478,7 +498,9 @@
       "Pensioner_Couple_HH_Pct": "All-Pensioner Couples (66+) (%)",
       "Lone_Parent_HH_Pct": "Lone Parent Families with Dep Children (%)",
       "Pct_65plus": "Older Adults (65+) %",
-      "GP_Registration_Rate_Pct": "GP Registration Coverage (%)"
+      "GP_Registration_Rate_Pct": "GP Registration Coverage (%)",
+      "DWP_DLA_Rate_Pct": "DWP DLA rate (%)",
+      "DWP_PIP_Rate_Pct": "DWP PIP rate (%)"
     };
 
     titleEl.textContent = layerLabels[currentLayerKey] || "Map Layer";
@@ -508,6 +530,8 @@
         `<strong>Rural Risk Index:</strong> ${detail.rural_risk_index !== null && detail.rural_risk_index !== undefined ? detail.rural_risk_index.toFixed(4) : "N/A"}<br>` +
         `<strong>Rural / Urban Classification:</strong> ${detail.ruc21nm || "N/A"}<br>` +
         `<strong>Rural Isolation Score (0-1):</strong> ${detail.rural_isolation_score !== null && detail.rural_isolation_score !== undefined ? detail.rural_isolation_score.toFixed(2) : "N/A"}<br>` +
+        `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : "N/A"}<br>` +
         `<strong>GP Travel Time (PT / Walk):</strong> ${detail.gp_pt_time !== null && detail.gp_pt_time !== undefined ? detail.gp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
         `<strong>GP Travel Time (Car):</strong> ${detail.gp_car_time !== null && detail.gp_car_time !== undefined ? detail.gp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
         `<strong>Households with No Car/Van:</strong> ${detail.no_cars_pct !== null && detail.no_cars_pct !== undefined ? detail.no_cars_pct.toFixed(1) + "%" : "N/A"}<br>` +
@@ -523,6 +547,12 @@
         `<strong>LSOAC Subgroup:</strong> ${detail.subgroup_code ? detail.subgroup_code + ': ' + (detail.subgroup_name || "N/A") : "N/A"}<br>` +
         `<strong>LSOAC Group:</strong> ${detail.group_name || "N/A"}<br>` +
         `<strong>LSOAC Supergroup:</strong> ${detail.supergroup_name || "N/A"}`;
+
+      if (detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined) {
+        popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : "N/A"}` +
+          `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : "N/A"}`;
+        if (detail.dwp_source) popupHtml += `<br><strong>DWP source:</strong> ${detail.dwp_source}`;
+      }
 
       if (detail.total_households_2021 !== null && detail.total_households_2021 !== undefined) {
         popupHtml +=
@@ -594,6 +624,8 @@
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Lone_Parent_HH_Pct"> Lone Parent Families (%)</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Pct_65plus"> Older Adults (65+) %</label>
         <label style="display:block; margin-bottom:8px;"><input type="radio" name="map_metric" value="GP_Registration_Rate_Pct"> GP Registration Coverage (%)</label>
+        <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="DWP_DLA_Rate_Pct"> DWP DLA rate (%)</label>
+        <label style="display:block; margin-bottom:8px;"><input type="radio" name="map_metric" value="DWP_PIP_Rate_Pct"> DWP PIP rate (%)</label>
         <div style="border-top:1px solid #e4ecef; padding-top:8px; margin-top:6px;">
           <div id="map_colorbar_title" style="font-weight:600; margin-bottom:4px;">Rural Risk Index</div>
           <div id="map_colorbar_gradient" style="height:12px; border-radius:4px; border:1px solid #d0d9df;"></div>

@@ -17,6 +17,8 @@ RURAL_RISK_WEIGHT_KEYS = [
     "off_gas_grid_weight",
     "housing_tenure_weight",
     "overcrowding_weight",
+    "dla_weight",
+    "pip_weight",
 ]
 
 # Supergroup fallback mapping (0 to 1)
@@ -97,7 +99,7 @@ LSOAC_SUBGROUP_RISK_MAP: dict[str, float] = {
 
 
 def normalize_rural_risk_weights(weight_values: dict[str, float]) -> dict[str, float]:
-    values = np.array([float(weight_values[k]) for k in RURAL_RISK_WEIGHT_KEYS], dtype=float)
+    values = np.array([float(weight_values.get(k, 0.0)) for k in RURAL_RISK_WEIGHT_KEYS], dtype=float)
     values = np.clip(values, a_min=0.0, a_max=None)
     total = float(values.sum())
     if np.isclose(total, 0.0):
@@ -109,19 +111,21 @@ def normalize_rural_risk_weights(weight_values: dict[str, float]) -> dict[str, f
 
 def apply_rural_risk_index(
     lsoa_df: pd.DataFrame,
-    rural_weight: float = 9.1,
-    gp_pt_weight: float = 9.1,
-    gp_car_weight: float = 9.1,
-    no_car_weight: float = 9.1,
-    imd_weight: float = 9.1,
-    oac_weight: float = 9.1,
-    household_weight: float = 9.1,
-    fuel_poverty_weight: float = 9.1,
-    off_gas_grid_weight: float = 9.1,
-    housing_tenure_weight: float = 9.1,
-    overcrowding_weight: float = 9.1,
+    rural_weight: float = 7.7,
+    gp_pt_weight: float = 7.7,
+    gp_car_weight: float = 7.7,
+    no_car_weight: float = 7.7,
+    imd_weight: float = 7.7,
+    oac_weight: float = 7.7,
+    household_weight: float = 7.7,
+    fuel_poverty_weight: float = 7.7,
+    off_gas_grid_weight: float = 7.7,
+    housing_tenure_weight: float = 7.7,
+    overcrowding_weight: float = 7.7,
+    dla_weight: float = 7.7,
+    pip_weight: float = 7.7,
 ) -> pd.DataFrame:
-    """Computes the multi-dimensional Rural Risk Index across 11 indicators (0-1, higher = higher risk)."""
+    """Computes the Rural Risk Index across 13 indicators (0-1, higher = higher risk)."""
     normalized_weights = normalize_rural_risk_weights(
         {
             "rural_weight": rural_weight,
@@ -135,6 +139,8 @@ def apply_rural_risk_index(
             "off_gas_grid_weight": off_gas_grid_weight,
             "housing_tenure_weight": housing_tenure_weight,
             "overcrowding_weight": overcrowding_weight,
+            "dla_weight": dla_weight,
+            "pip_weight": pip_weight,
         }
     )
 
@@ -217,6 +223,16 @@ def apply_rural_risk_index(
     )
     out["Overcrowding_Normalized"] = minmax_scale(overcrowded_pct).fillna(0.5)
 
+    # 12-13. Public DWP DLA/PIP claimant rates (need/vulnerability signals).
+    dla_rate = pd.to_numeric(
+        out.get("dwp_dla_rate_pct", pd.Series(np.nan, index=out.index)), errors="coerce"
+    )
+    pip_rate = pd.to_numeric(
+        out.get("dwp_pip_rate_pct", pd.Series(np.nan, index=out.index)), errors="coerce"
+    )
+    out["DLA_Normalized"] = minmax_scale(dla_rate).fillna(0.5)
+    out["PIP_Normalized"] = minmax_scale(pip_rate).fillna(0.5)
+
     # Composite Rural Risk Index. Suppressed/missing source indicators are
     # excluded for that LSOA and the remaining weights are renormalized.
     components = [
@@ -231,6 +247,8 @@ def apply_rural_risk_index(
         ("Off_Gas_Grid_Normalized", "off_gas_grid_weight", off_gas_grid_pct.notna()),
         ("Housing_Tenure_Vulnerability_Normalized", "housing_tenure_weight", non_owner_occupied_pct.notna()),
         ("Overcrowding_Normalized", "overcrowding_weight", overcrowded_pct.notna()),
+        ("DLA_Normalized", "dla_weight", dla_rate.notna()),
+        ("PIP_Normalized", "pip_weight", pip_rate.notna()),
     ]
     weighted_sum = pd.Series(0.0, index=out.index)
     available_weight = pd.Series(0.0, index=out.index)

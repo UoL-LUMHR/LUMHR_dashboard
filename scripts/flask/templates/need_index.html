@@ -32,8 +32,10 @@
       </ul>
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Need Index:</strong></p>
       <ul class="muted" style="margin-top:0; padding-left:1.1rem;">
-        <li>Depression prevalence, SMI prevalence, antidepressant items per patient, and SAMHI are min-max normalised to [0,1].</li>
-        <li>Need Index = (Depression_Normalised * w_dep) + (SMI_Normalised * w_smi) + (Prescribing_Normalised * w_rx) + (SAMHI_Normalised * w_samhi)</li>
+        <li>Depression prevalence, SMI prevalence, antidepressant items per patient, SAMHI, and the public DLA/PIP rates are min-max normalised to [0,1].</li>
+        <li>Need Index is a weighted six-indicator composite; the DLA and PIP rates are separately weighted need signals.</li>
+        <li>The DLA/PIP rates are public-data indicators and are not official SAMHI components.</li>
+        <li>The default DLA/PIP snapshot is 2025, so scores are current public-data composites rather than temporally matched historical SAMHI values.</li>
       </ul>
     </details>
 
@@ -45,6 +47,7 @@
         <li><a href="https://openprescribing.net/analyse/#org=practice&orgIds=71E&numIds=4.3&denom=nothing&selectedTab=map" target="_blank" rel="noopener noreferrer">Antidepressant items per patient</a></li>
         <li><a href="https://pldr.org/dataset/small-area-mental-health-index-samhi-2noyv" target="_blank" rel="noopener noreferrer">SAMHI</a></li>
         <li><a href="https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates" target="_blank" rel="noopener noreferrer">LSOA Mid-Year Population Estimates (Mid-2024 SAPE, ONS)</a></li>
+        <li><a href="https://stat-xplore.dwp.gov.uk/" target="_blank" rel="noopener noreferrer">DWP Stat-Xplore</a> — DLA/PIP mental-health and learning-difficulty claimant snapshots data.</li>
       </ul>
     </details>
 
@@ -53,33 +56,33 @@
     <div class="control">
       <div class="control-header">
         <label for="dep">Depression Prevalence (%)</label>
-        <output id="dep_val">25.0</output>
+        <output id="dep_val">16.7</output>
       </div>
-      <input id="dep" type="range" min="0" max="100" step="0.1" value="25.0">
+      <input id="dep" type="range" min="0" max="100" step="0.1" value="16.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="smi">SMI Prevalence (%)</label>
-        <output id="smi_val">25.0</output>
+        <output id="smi_val">16.7</output>
       </div>
-      <input id="smi" type="range" min="0" max="100" step="0.1" value="25.0">
+      <input id="smi" type="range" min="0" max="100" step="0.1" value="16.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="prescribing">Antidepressant Items / Patient</label>
-        <output id="prescribing_val">25.0</output>
+        <output id="prescribing_val">16.7</output>
       </div>
-      <input id="prescribing" type="range" min="0" max="100" step="0.1" value="25.0">
+      <input id="prescribing" type="range" min="0" max="100" step="0.1" value="16.7">
     </div>
 
     <div class="control">
       <div class="control-header">
         <label for="samhi">SAMHI Index</label>
-        <output id="samhi_val">25.0</output>
+        <output id="samhi_val">16.7</output>
       </div>
-      <input id="samhi" type="range" min="0" max="100" step="0.1" value="25.0">
+      <input id="samhi" type="range" min="0" max="100" step="0.1" value="16.7">
     </div>
 
     <div class="control">
@@ -88,6 +91,22 @@
         <output id="samhi_year_val">2022</output>
       </div>
       <input id="samhi_year" type="range" min="2011" max="2022" step="1" value="2022">
+    </div>
+
+    <div class="control">
+      <div class="control-header">
+        <label for="dla">DWP DLA Rate (%)</label>
+        <output id="dla_val">16.7</output>
+      </div>
+      <input id="dla" type="range" min="0" max="100" step="0.1" value="16.7">
+    </div>
+
+    <div class="control">
+      <div class="control-header">
+        <label for="pip">DWP PIP Rate (%)</label>
+        <output id="pip_val">16.7</output>
+      </div>
+      <input id="pip" type="range" min="0" max="100" step="0.1" value="16.7">
     </div>
 
     <div class="legend" id="weight_total"></div>
@@ -111,7 +130,7 @@
 
   <section class="map-shell">
     <button class="mobile-sidebar-toggle" id="mobile_sidebar_toggle" type="button">
-      ⚙️ Weights &amp; Controls <span class="btn-badge">4</span>
+      ⚙️ Weights &amp; Controls <span class="btn-badge">6</span>
     </button>
     <div id="map"></div>
   </section>
@@ -137,7 +156,7 @@
   let fillOpacity = 0.82;
   let showUrban = true;
   let showRural = true;
-  const sliderIds = ["dep", "smi", "prescribing", "samhi"];
+  const sliderIds = ["dep", "smi", "prescribing", "samhi", "dla", "pip"];
 
   function getCode(feature) {
     return feature?.properties?.CODE ?? feature?.properties?.LSOA_CODE ?? null;
@@ -157,13 +176,15 @@
         "Antidepressant_Items_Per_Patient": "Antidepressant Items / Patient",
         "Pct_65plus": "Older Adults (65+) %",
         "GP_Registration_Rate_Pct": "GP Registration Coverage (%)",
+        "DWP_DLA_Rate_Pct": "DWP DLA rate (%)",
+        "DWP_PIP_Rate_Pct": "DWP PIP rate (%)",
       }[currentLayerKey] || "Map Layer");
   }
 
   function formatNeedTooltipValue(value, layerKey = currentLayerKey) {
     const num = Number(value);
     if (!Number.isFinite(num)) return "N/A";
-    if (["Depression_Prevalence", "SMI_Prevalence", "Pct_65plus", "GP_Registration_Rate_Pct"].includes(layerKey)) {
+    if (["Depression_Prevalence", "SMI_Prevalence", "Pct_65plus", "GP_Registration_Rate_Pct", "DWP_DLA_Rate_Pct", "DWP_PIP_Rate_Pct"].includes(layerKey)) {
       return `${num.toFixed(1)}%`;
     }
     return num.toFixed(4);
@@ -276,27 +297,33 @@
     const smi = Number(document.getElementById("smi").value);
     const prescribing = Number(document.getElementById("prescribing").value);
     const samhi = Number(document.getElementById("samhi").value);
+    const dla = Number(document.getElementById("dla").value);
+    const pip = Number(document.getElementById("pip").value);
     const samhiYear = Number(document.getElementById("samhi_year").value);
 
     document.getElementById("dep_val").textContent = dep.toFixed(1);
     document.getElementById("smi_val").textContent = smi.toFixed(1);
     document.getElementById("prescribing_val").textContent = prescribing.toFixed(1);
     document.getElementById("samhi_val").textContent = samhi.toFixed(1);
+    document.getElementById("dla_val").textContent = dla.toFixed(1);
+    document.getElementById("pip_val").textContent = pip.toFixed(1);
     document.getElementById("samhi_year_val").textContent = String(samhiYear);
 
-    const rawTotal = dep + smi + prescribing + samhi;
+    const rawTotal = dep + smi + prescribing + samhi + dla + pip;
     document.getElementById("weight_total").textContent = `Weight points total: ${rawTotal.toFixed(1)}`;
 
-    const normDen = rawTotal > 0 ? rawTotal : 4;
-    const normDep = rawTotal > 0 ? dep / normDen : 0.25;
-    const normSmi = rawTotal > 0 ? smi / normDen : 0.25;
-    const normPrescribing = rawTotal > 0 ? prescribing / normDen : 0.25;
-    const normSamhi = rawTotal > 0 ? samhi / normDen : 0.25;
+    const normDen = rawTotal > 0 ? rawTotal : 6;
+    const normDep = rawTotal > 0 ? dep / normDen : (1 / 6);
+    const normSmi = rawTotal > 0 ? smi / normDen : (1 / 6);
+    const normPrescribing = rawTotal > 0 ? prescribing / normDen : (1 / 6);
+    const normSamhi = rawTotal > 0 ? samhi / normDen : (1 / 6);
+    const normDla = rawTotal > 0 ? dla / normDen : (1 / 6);
+    const normPip = rawTotal > 0 ? pip / normDen : (1 / 6);
 
     document.getElementById("effective_weights").textContent =
       `Effective Need Index weights: Depression ${(normDep * 100).toFixed(1)}% | ` +
       `SMI ${(normSmi * 100).toFixed(1)}% | Prescribing ${(normPrescribing * 100).toFixed(1)}% | ` +
-      `SAMHI ${(normSamhi * 100).toFixed(1)}%`;
+      `SAMHI ${(normSamhi * 100).toFixed(1)}% | DLA ${(normDla * 100).toFixed(1)}% | PIP ${(normPip * 100).toFixed(1)}%`;
   }
 
   function refreshTooltips() {
@@ -317,7 +344,15 @@
         `<strong>Depression Prevalence (%):</strong> ${detail.depression_prevalence_pct !== null && detail.depression_prevalence_pct !== undefined ? detail.depression_prevalence_pct.toFixed(2) : "N/A"}<br>` +
         `<strong>SMI Prevalence (%):</strong> ${detail.smi_prevalence_pct !== null && detail.smi_prevalence_pct !== undefined ? detail.smi_prevalence_pct.toFixed(2) : "N/A"}<br>` +
         `<strong>Antidepressant Items Per Patient:</strong> ${detail.antidepressant_items_per_patient !== null && detail.antidepressant_items_per_patient !== undefined ? detail.antidepressant_items_per_patient.toFixed(4) : "N/A"}<br>` +
-        `<strong>${samhiLegendLabel}:</strong> ${detail.samhi_selected !== null && detail.samhi_selected !== undefined ? detail.samhi_selected.toFixed(4) : "N/A"}`;
+        `<strong>${samhiLegendLabel}:</strong> ${detail.samhi_selected !== null && detail.samhi_selected !== undefined ? detail.samhi_selected.toFixed(4) : "N/A"}<br>` +
+        `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : "N/A"}`;
+
+      if (detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined) {
+        popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : "N/A"}` +
+          `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : "N/A"}`;
+        if (detail.dwp_source) popupHtml += `<br><strong>DWP source:</strong> ${detail.dwp_source}`;
+      }
 
       if (detail.ons_pop_total !== null && detail.ons_pop_total !== undefined) {
         popupHtml +=
@@ -433,6 +468,8 @@
           "Antidepressant_Items_Per_Patient": "Antidepressant Items / Patient",
           "Pct_65plus": "Older Adults (65+) %",
           "GP_Registration_Rate_Pct": "GP Registration Coverage (%)",
+          "DWP_DLA_Rate_Pct": "DWP DLA rate (%)",
+          "DWP_PIP_Rate_Pct": "DWP PIP rate (%)",
         }[currentLayerKey] || "Map Layer";
 
     titleEl.textContent = layerLabel;
@@ -457,6 +494,8 @@
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="SMI_Prevalence"> SMI Prevalence (%)</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Antidepressant_Items_Per_Patient"> Antidepressant Items / Patient</label>
         <label id="samhi_radio_label" style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="SAMHI_Selected"> ${samhiLegendLabel}</label>
+        <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="DWP_DLA_Rate_Pct"> DWP DLA rate (%)</label>
+        <label style="display:block; margin-bottom:8px;"><input type="radio" name="map_metric" value="DWP_PIP_Rate_Pct"> DWP PIP rate (%)</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Pct_65plus"> Older Adults (65+) %</label>
         <label style="display:block; margin-bottom:8px;"><input type="radio" name="map_metric" value="GP_Registration_Rate_Pct"> GP Registration Coverage (%)</label>
         <div style="border-top:1px solid #e4ecef; padding-top:8px; margin-top:6px;">
@@ -551,6 +590,8 @@
     const smi = Number(document.getElementById("smi").value);
     const prescribing = Number(document.getElementById("prescribing").value);
     const samhi = Number(document.getElementById("samhi").value);
+    const dla = Number(document.getElementById("dla").value);
+    const pip = Number(document.getElementById("pip").value);
     const samhiYear = Number(document.getElementById("samhi_year").value);
 
     const params = new URLSearchParams({
@@ -558,6 +599,8 @@
       smi: smi.toString(),
       prescribing: prescribing.toString(),
       samhi: samhi.toString(),
+      dla: dla.toString(),
+      pip: pip.toString(),
       samhi_year: samhiYear.toString(),
     });
 
@@ -614,7 +657,7 @@
     if (btn) {
       btn.addEventListener("click", async () => {
         for (const id of sliderIds) {
-          document.getElementById(id).value = "25.0";
+          document.getElementById(id).value = "16.7";
         }
         updateWeightText();
         await updateMap();

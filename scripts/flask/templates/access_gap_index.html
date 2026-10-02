@@ -26,8 +26,9 @@
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Formula:</strong></p>
       <ul class="muted" style="margin-top:0; padding-left:1.1rem;">
         <li>Access Gap Index = Need Index &minus; Access Index</li>
-        <li>Both the Need Index and the Access Index are independently normalised composite scores in [0,1], each with their own weight sliders below.</li>
+        <li>Both the Need Index and the Access Index are independently normalised composite scores in [0,1], each with their own weight sliders below. Need now includes separately weighted public DLA and PIP rates.</li>
         <li>Positive values indicate need outpacing access (a potential access gap); negative values indicate access exceeding need.</li>
+        <li>The default DLA/PIP inputs are the latest 2025 public snapshot, so this is a current composite rather than a historical time-matched SAMHI comparison.</li>
       </ul>
     </details>
 
@@ -39,42 +40,44 @@
         <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/quality-and-outcomes-framework-achievement-prevalence-and-exceptions-data/2024-25" target="_blank" rel="noopener noreferrer">QOF Mental Health & Depression Prevalence and Achievements (2024-25, NHS Digital)</a></li>
         <li><a href="https://openprescribing.net/analyse/#org=practice&orgIds=71E&numIds=4.3&denom=nothing&selectedTab=map" target="_blank" rel="noopener noreferrer">Antidepressant Prescribing (OpenPrescribing)</a></li>
         <li><a href="https://pldr.org/dataset/small-area-mental-health-index-samhi-2noyv" target="_blank" rel="noopener noreferrer">Small Area Mental Health Index (SAMHI, PLDR)</a></li>
+        <li><a href="https://stat-xplore.dwp.gov.uk/" target="_blank" rel="noopener noreferrer">DWP Stat-Xplore</a> — public DLA and PIP mental-health/learning-difficulty claimant snapshots (2023–2025); separate rates use the same recorded population denominator.</li>
         <li><a href="https://www.gov.uk/government/statistical-data-sets/journey-time-statistics-data-tables-jts" target="_blank" rel="noopener noreferrer">Journey Time Statistics (DfT, 2019)</a></li>
         <li><a href="https://www.gov.uk/government/collections/rural-urban-classification" target="_blank" rel="noopener noreferrer">Rural Urban Classification (2021, DEFRA / ONS)</a></li>
         <li><a href="https://www.ons.gov.uk/datasets/TS045/editions/2021/versions/4" target="_blank" rel="noopener noreferrer">Car or Van Availability (Census 2021 TS045, ONS)</a></li>
         <li><a href="https://github.com/GreaterManchesterODA/Digital-Exclusion-Risk-Index" target="_blank" rel="noopener noreferrer">Digital Exclusion Risk Index (DERI v1.6, GMCA)</a></li>
+        <li><a href="https://stat-xplore.dwp.gov.uk/" target="_blank" rel="noopener noreferrer">DWP Stat-Xplore</a> — DLA/PIP mental-health and learning-difficulty claimant snapshots data.</li>
       </ul>
     </details>
 
     <details class="control" open>
-      <summary><strong>Need Index Weights (4 Indicators)</strong></summary>
+      <summary><strong>Need Index Weights (6 Indicators)</strong></summary>
       <div class="control" style="margin-top:0.6rem;">
         <div class="control-header">
           <label for="dep">Depression Prevalence (%)</label>
-          <output id="dep_val">25.0</output>
+          <output id="dep_val">16.7</output>
         </div>
-        <input id="dep" type="range" min="0" max="100" step="0.1" value="25.0">
+        <input id="dep" type="range" min="0" max="100" step="0.1" value="16.7">
       </div>
       <div class="control">
         <div class="control-header">
           <label for="smi">SMI Prevalence (%)</label>
-          <output id="smi_val">25.0</output>
+          <output id="smi_val">16.7</output>
         </div>
-        <input id="smi" type="range" min="0" max="100" step="0.1" value="25.0">
+        <input id="smi" type="range" min="0" max="100" step="0.1" value="16.7">
       </div>
       <div class="control">
         <div class="control-header">
           <label for="prescribing">Antidepressant Items / Patient</label>
-          <output id="prescribing_val">25.0</output>
+          <output id="prescribing_val">16.7</output>
         </div>
-        <input id="prescribing" type="range" min="0" max="100" step="0.1" value="25.0">
+        <input id="prescribing" type="range" min="0" max="100" step="0.1" value="16.7">
       </div>
       <div class="control">
         <div class="control-header">
           <label for="samhi">SAMHI Index</label>
-          <output id="samhi_val">25.0</output>
+          <output id="samhi_val">16.7</output>
         </div>
-        <input id="samhi" type="range" min="0" max="100" step="0.1" value="25.0">
+        <input id="samhi" type="range" min="0" max="100" step="0.1" value="16.7">
       </div>
       <div class="control">
         <div class="control-header">
@@ -82,6 +85,20 @@
           <output id="samhi_year_val">{{ max_year }}</output>
         </div>
         <input id="samhi_year" type="range" min="{{ min_year }}" max="{{ max_year }}" step="1" value="{{ max_year }}">
+      </div>
+      <div class="control">
+        <div class="control-header">
+          <label for="dla">DWP DLA Rate (%)</label>
+          <output id="dla_val">16.7</output>
+        </div>
+        <input id="dla" type="range" min="0" max="100" step="0.1" value="16.7">
+      </div>
+      <div class="control">
+        <div class="control-header">
+          <label for="pip">DWP PIP Rate (%)</label>
+          <output id="pip_val">16.7</output>
+        </div>
+        <input id="pip" type="range" min="0" max="100" step="0.1" value="16.7">
       </div>
       <div class="legend" id="need_weight_total"></div>
     </details>
@@ -193,7 +210,7 @@
 
   <section class="map-shell">
     <button class="mobile-sidebar-toggle" id="mobile_sidebar_toggle" type="button">
-      ⚙️ Weights &amp; Controls <span class="btn-badge">16</span>
+      ⚙️ Weights &amp; Controls <span class="btn-badge">18</span>
     </button>
     <div id="map"></div>
   </section>
@@ -218,13 +235,15 @@
   let fillOpacity = 0.82;
   let showUrban = true;
   let showRural = true;
-  const needSliderIds = ["dep", "smi", "prescribing", "samhi"];
+  const needSliderIds = ["dep", "smi", "prescribing", "samhi", "dla", "pip"];
   const accessSliderIds = ["mh002", "mh021", "mh_pca", "dep_pca", "dep004", "gp_pt", "gp_car", "hosp_pt", "hosp_car", "rural", "car", "digital"];
 
   const layerLabels = {
     "Access_Gap_Index": "Access Gap Index (Need &minus; Access)",
     "Need_Index": "Need Index",
     "Access_Index": "Access Index",
+      "DWP_DLA_Rate_Pct": "DWP DLA rate (%)",
+    "DWP_PIP_Rate_Pct": "DWP PIP rate (%)",
     "Pct_65plus": "Older Adults (65+) %",
     "GP_Registration_Rate_Pct": "GP Registration Coverage (%)",
   };
@@ -240,7 +259,7 @@
   function formatGapTooltipValue(value, layerKey = currentLayerKey) {
     const num = Number(value);
     if (!Number.isFinite(num)) return "N/A";
-    if (layerKey === "Pct_65plus" || layerKey === "GP_Registration_Rate_Pct") return `${num.toFixed(1)}%`;
+    if (layerKey === "Pct_65plus" || layerKey === "GP_Registration_Rate_Pct" || layerKey.endsWith("_Rate_Pct")) return `${num.toFixed(1)}%`;
     return num.toFixed(4);
   }
 
@@ -352,15 +371,19 @@
     const smi = Number(document.getElementById("smi").value);
     const prescribing = Number(document.getElementById("prescribing").value);
     const samhi = Number(document.getElementById("samhi").value);
+    const dla = Number(document.getElementById("dla").value);
+    const pip = Number(document.getElementById("pip").value);
     const samhiYear = Number(document.getElementById("samhi_year").value);
 
     document.getElementById("dep_val").textContent = dep.toFixed(1);
     document.getElementById("smi_val").textContent = smi.toFixed(1);
     document.getElementById("prescribing_val").textContent = prescribing.toFixed(1);
     document.getElementById("samhi_val").textContent = samhi.toFixed(1);
+    document.getElementById("dla_val").textContent = dla.toFixed(1);
+    document.getElementById("pip_val").textContent = pip.toFixed(1);
     document.getElementById("samhi_year_val").textContent = String(samhiYear);
 
-    const needTotal = dep + smi + prescribing + samhi;
+    const needTotal = dep + smi + prescribing + samhi + dla + pip;
     document.getElementById("need_weight_total").textContent = `Need Index weight points total: ${needTotal.toFixed(1)}`;
 
     let accessTotal = 0;
@@ -392,7 +415,15 @@
         `<strong>Rural / Urban Classification:</strong> ${detail.ruc21nm || (detail.is_rural ? "Rural" : "Urban") || "N/A"}<br>` +
         `<strong>Access Gap Index:</strong> ${detail.access_gap_index !== null && detail.access_gap_index !== undefined ? detail.access_gap_index.toFixed(4) : "N/A"}<br>` +
         `<strong>Need Index:</strong> ${detail.need_index !== null && detail.need_index !== undefined ? detail.need_index.toFixed(4) : "N/A"}<br>` +
-        `<strong>Access Index:</strong> ${detail.access_index !== null && detail.access_index !== undefined ? detail.access_index.toFixed(4) : "N/A"}`;
+        `<strong>Access Index:</strong> ${detail.access_index !== null && detail.access_index !== undefined ? detail.access_index.toFixed(4) : "N/A"}<br>` +
+        `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : "N/A"}`;
+
+      if (detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined) {
+        popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : "N/A"}` +
+          `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : "N/A"}`;
+        if (detail.dwp_source) popupHtml += `<br><strong>DWP source:</strong> ${detail.dwp_source}`;
+      }
 
       if (detail.ons_pop_total !== null && detail.ons_pop_total !== undefined) {
         popupHtml +=
@@ -509,6 +540,8 @@
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Access_Gap_Index" checked> Access Gap Index</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Need_Index"> Need Index</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Access_Index"> Access Index</label>
+        <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="DWP_DLA_Rate_Pct"> DWP DLA rate (%)</label>
+        <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="DWP_PIP_Rate_Pct"> DWP PIP rate (%)</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Pct_65plus"> Older Adults (65+) %</label>
         <label style="display:block; margin-bottom:8px;"><input type="radio" name="map_metric" value="GP_Registration_Rate_Pct"> GP Registration Coverage (%)</label>
         <div style="border-top:1px solid #e4ecef; padding-top:8px; margin-top:6px;">
@@ -587,6 +620,8 @@
     const smi = Number(document.getElementById("smi").value);
     const prescribing = Number(document.getElementById("prescribing").value);
     const samhi = Number(document.getElementById("samhi").value);
+    const dla = Number(document.getElementById("dla").value);
+    const pip = Number(document.getElementById("pip").value);
     const samhiYear = Number(document.getElementById("samhi_year").value);
 
     const params = new URLSearchParams({
@@ -594,7 +629,10 @@
       smi: smi.toString(),
       prescribing: prescribing.toString(),
       samhi: samhi.toString(),
+      dla: dla.toString(),
+      pip: pip.toString(),
       samhi_year: samhiYear.toString(),
+      ...Object.fromEntries(needSliderIds.map((id) => [id, Number(document.getElementById(id).value).toString()])),
       ...Object.fromEntries(accessSliderIds.map((id) => [id, Number(document.getElementById(id).value).toString()])),
     });
 
@@ -649,7 +687,7 @@
     if (needBtn) {
       needBtn.addEventListener("click", async () => {
         for (const id of needSliderIds) {
-          document.getElementById(id).value = "25.0";
+          document.getElementById(id).value = "16.7";
         }
         updateWeightText();
         await updateMap();

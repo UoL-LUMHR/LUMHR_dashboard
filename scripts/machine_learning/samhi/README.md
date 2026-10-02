@@ -116,6 +116,228 @@ python scripts/machine_learning/samhi/03_forward_projections.py --scope both
   python scripts/machine_learning/samhi/03_forward_projections.py --scope lincolnshire --output-dir path/to/results
   ```
 
+### 7. Historical/Bayesian experiments and results
+
+The added [`06_historical_bayesian_experiment.py`](06_historical_bayesian_experiment.py)
+builds a dated panel from the historical source files under
+`scripts/utils/source_data/` plus the cleaned annual travel-time files under
+`datasets/journey_time_statistics/`.  It runs rolling-origin forecasts (train
+through 2016, predict 2017; continuing through 2022) for:
+
+* persistence;
+* SAMHI-history ElasticNet;
+* SAMHI history plus dated external covariates ElasticNet; and
+* a Bayesian Ridge partial-pooling pilot with LSOA and year effects; and
+* a CAR-style spatial Bayesian random-intercept pilot using Queen-contiguous
+  2021 LSOAs from the supplied Lincolnshire GeoJSON.
+
+#### Previous pilot (v1)
+
+The first run is preserved in `results/historical_bayesian/`.  It used dated
+fuel poverty and travel-time data, but also included the gas-grid workbook by
+reference year.  A later source audit found that workbook was published in
+December 2025, so its historical values are not valid as information available
+to a 2014--2022 forecaster.  Treat v1 as a diagnostic comparison, not the final
+leakage-controlled result.  Its mean rolling-origin results were:
+
+| Model | RMSE | MAE | Directional accuracy | 95% interval coverage | Interval width | CRPS |
+|---|---:|---:|---:|---:|---:|---:|
+| Persistence | 0.3305 | 0.2603 | 0.0% | 89.9% | 1.0436 | 0.1865 |
+| SAMHI-history ElasticNet | **0.2678** | **0.2039** | **74.6%** | 92.8% | 0.9674 | **0.1474** |
+| History + v1 external ElasticNet | 0.2685 | 0.2046 | 74.2% | 92.5% | 0.9659 | 0.1479 |
+| Bayesian Ridge partial pooling | 0.2705 | 0.2063 | 74.5% | 92.1% | 0.9552 | 0.1490 |
+
+The interpretation is that SAMHI's own lags carried most of the predictive
+signal; the v1 external block did not improve average RMSE and the gas vintage
+made that comparison unsuitable as evidence of historical prediction.
+
+#### Next implementation (v2: dated QOF and population panel)
+
+The current run writes to `results/historical_bayesian_v2/`.  It adds annual
+mid-year population estimates (2011--2021 2021-LSOA geography) and practice-
+weighted QOF indicators.  QOF is selected by publication date, not merely by
+the report year: the reports used here were published on 2018-10-26 (2017),
+2020-08-20 (2019), 2022-09-22 (2021), 2023-09-07 (2022), 2024-08-29 (2023),
+and 2025-08-28 (2024).  Gas-grid data are excluded from v2 because their
+publication vintage fails this historical-information test.  Fuel and travel
+retain their source-year labels; population is a mid-year estimate and the
+panel records the selected source year.  The dated-panel CSV also keeps
+`fuel_source_year`, `travel_source_year`, `population_source_year`,
+`qof_source_year`, and `qof_publication_date` for audit.
+The practice-to-LSOA weighting uses the supplied July 2026 registration
+allocation; it is a fixed linkage for this pilot, not a historical registration
+snapshot, so QOF coefficients should not be interpreted causally.
+
+The source-folder inventory relevant to this panel is:
+
+| Source | Years present | How v2 uses it |
+|---|---|---|
+| Fuel-poverty LSOA workbooks | 2011--2024 | Latest source year before target (definition changes from LIHC to LILEE are retained as a vintage note) |
+| Journey-time CSVs | GP 2014--2019; hospitals 2014--2019 | Latest GP/hospital observation before target |
+| Population estimates | Mid-2011--mid-2024 on 2021 LSOAs | Latest population and age-composition observation before target |
+| QOF workbooks | Raw practice files 2006--07 through 2024--25; PLDR LSOA series 2011--2022 | PLDR is used for the historical baseline; raw files can extend/reconstruct recent years |
+| Gas-grid workbook | Reference years 2015--2024, published 2025-12-18 | Excluded from v2 because it is not a historical publication vintage |
+
+The v2 mean rolling-origin results were:
+
+| Model | RMSE | MAE | Directional accuracy | 95% interval coverage | Interval width | CRPS |
+|---|---:|---:|---:|---:|---:|---:|
+| Persistence | 0.3305 | 0.2603 | 0.0% | 89.9% | 1.0436 | 0.1865 |
+| SAMHI-history ElasticNet | **0.2678** | **0.2039** | **74.6%** | 92.8% | 0.9674 | **0.1474** |
+| History + dated population/QOF/travel/fuel ElasticNet | 0.2688 | 0.2046 | 74.5% | 92.3% | 0.9639 | 0.1481 |
+| Bayesian Ridge partial pooling | 0.2701 | 0.2061 | 74.5% | 92.2% | 0.9514 | 0.1488 |
+| Bayesian CAR spatial random effect | 0.2771 | 0.2108 | 73.7% | **95.6%** | 1.1442 | 0.1527 |
+
+Metric interpretation: RMSE and MAE measure point-error size (lower is
+better); directional accuracy measures whether the sign of annual change is
+correct (higher is better); interval coverage should be near the nominal 95%;
+interval width measures sharpness (narrower is better at comparable coverage);
+and CRPS scores the whole predictive distribution (lower is better).
+
+The v2 result is consistent with v1: adding the currently available historical
+covariates does not improve the mean point forecast over SAMHI history alone.
+It is nevertheless a better-controlled test because the QOF vintage is
+explicit and the late-published gas series is removed.  The non-spatial
+Bayesian model is slightly worse on average RMSE/CRPS than history-only,
+although it was best on the 2022 fold (RMSE 0.2422).  The explicit CAR random
+effect widened intervals and raised coverage to 95.6%, but its point RMSE
+(0.2771) and CRPS (0.1527) were worse.  This first spatial prior is therefore
+conservative rather than a demonstrated point-forecast improvement; its
+interval calibration should be rechecked with more origins and a tuned prior.
+
+These results do not establish causal effects.  They say that, for this
+Lincolnshire sample and 2017--2022 out-of-time tests, the additional data did
+not add enough independent signal to beat the autoregressive SAMHI baseline.
+The spatial CAR pilot is implemented in the same script and should be judged
+by the same rolling-origin and interval metrics before any national scaling.
+
+Run the Lincolnshire pilot with:
+
+```bash
+scripts/.venv/bin/python scripts/machine_learning/samhi/06_historical_bayesian_experiment.py --scope lincolnshire
+```
+
+Results are written to `results/historical_bayesian_v2/`:
+
+* `dated_panel.csv` — the dated LSOA-year panel with source-vintage audit columns;
+* `rolling_origin_predictions.csv` — out-of-time predictions; and
+* `rolling_origin_metrics.csv` — RMSE, MAE, directional accuracy, interval
+  coverage/width and normal predictive CRPS.
+
+The non-spatial Bayesian baseline uses scikit-learn's `BayesianRidge`, while
+the spatial pilot uses a conjugate Gaussian CAR-style prior and the existing
+GeoJSON adjacency.  The latter is a fast screening model, not a fully sampled
+PyMC/INLA CAR/ICAR analysis; a later production model should tune or sample
+the spatial hyperparameters and check sensitivity to the boundary definition.
+
+### 8. Newly added SAMHI component data
+
+The repository now contains the three non-hospital SAMHI components in a form
+that can be audited at LSOA level.  The normalisation script is
+[`07_component_reconstruction.py`](07_component_reconstruction.py).  It does
+not invent the missing hospital component: it writes it as missing until an
+approved NHS extract or a validated EMAS proxy is available.
+
+| Component | Local source | Coverage in the new audit |
+|---|---|---|
+| Antidepressants | `scripts/utils/source_data/pldr_prescribing_indicators_antidepressants_P_1_07/` | Four quarterly LSOA files per year, 2011--2025; ADQ rate converted to ADQ per person |
+| QOF depression | `scripts/utils/source_data/pldr_qof_indicators_depression_prevalence_QOF_4_12/QOF_4_12_Depression_LSOA_2011_2022.csv` | LSOA estimates 2011--2022; 2018 and 2019 have small gaps retained as missing |
+| DLA/PIP | `scripts/utils/source_data/pldr_welfare_indicators_claimants_DLA_PIP_for_mental_health_learning_difficulties_W_5_05/W_5_05_MH_DLA_PIP_LSOA11.csv` | Annual August snapshots 2010--2022; disclosure-adjusted PLDR values |
+| Raw DWP supplements | `datasets/DWP_DLA_PIP_data/` (legacy fallback: `scripts/utils/source_data/DWP_DLA_PIP_data/`) | DLA quarterly May 2018--March 2026 and corrected PIP monthly January 2019--July 2026; August DLA+PIP snapshots provide a post-PLDR extension for 2023--2025. Upstream: [DWP Stat-Xplore](https://stat-xplore.dwp.gov.uk/) |
+| Raw QOF supplements | `scripts/utils/source_data/quality_outcomes_framework/` | Public practice workbooks through 2024--25; the current parser reconstructs 2021--22, 2022--23 and 2024--25, while 2023--24 publishes no depression prevalence field |
+
+Run the component audit with:
+
+```bash
+scripts/.venv/bin/python scripts/machine_learning/samhi/07_component_reconstruction.py
+```
+
+Outputs are written to `results/component_reconstruction/`:
+
+* `three_component_panel.csv` — LSOA-year antidepressant, QOF and DLA/PIP values, with the hospital column explicitly missing.  `dla_pip` is the raw claimant-count component used by PLDR (not a percentage): PLDR values are retained for 2010--2022; where they are unavailable, the panel fills the count from DWP August DLA+PIP and records `dla_pip_source=DWP_August`.  The optional denominator-normalised DWP rate is `dwp_dla_pip_rate_pct`, with its `dwp_population_source_year` retained.  `qof_dep_source` distinguishes PLDR from patient-weighted public QOF practice allocation; 2023--24 remains missing because the public workbook has no depression prevalence field;
+* `component_coverage.csv` — row-level coverage by year and component; and
+* `component_vs_published_samhi_correlations.csv` — cross-sectional diagnostics against the published SAMHI index.
+
+The three-component z-score mean is only a diagnostic.  It is not the SAMHI
+index because it omits the hospital component and does not use the published
+two-factor loading structure.  In the first audit its 2022 cross-sectional
+correlation with published SAMHI was approximately 0.85, which supports
+further work but does not demonstrate reproducibility.
+
+The corrected DWP PIP file is now used in the extension.  DWP and PLDR
+DLA/PIP claimant counts correlate at 0.82--0.85 over their 2019--2022 overlap,
+but their levels differ because the extracts use different disclosure,
+benefit-vintage and geography conventions.  Therefore PLDR remains the
+historical SAMHI component through 2022; DWP counts are used only for the
+2023--2025 extension and should be calibrated in a sensitivity analysis.
+
+The public QOF allocation reproduces the PLDR spatial pattern strongly in the
+overlap (Pearson correlation approximately 0.98 for the 2021/22 alignment),
+but it remains a separately reconstructed measure rather than a replacement
+for the PLDR series.
+
+The 2025 DWP rate currently uses the latest repository population denominator
+(mid-2024); this denominator vintage is retained in the panel so that it can
+be replaced when a mid-2025 population estimate is added.
+
+### 9. Public-data Bayesian forecast
+
+[`08_public_data_bayesian_forecast.py`](08_public_data_bayesian_forecast.py)
+fits a one-year-lagged `BayesianRidge` model to the published SAMHI index for
+2011--2022.  It uses only public antidepressant, QOF and DLA/PIP components,
+with recursive forecasts for 2023--2025.  The hospital component is not
+imputed.  Rolling-origin results for 2017--2022 are written to
+`results/public_bayesian/`:
+
+* `rolling_origin_metrics.csv` — RMSE, MAE, directional accuracy, interval
+  coverage/width and CRPS;
+* `rolling_origin_predictions.csv` — held-out predictions; and
+* `future_predictions_2023_2025.csv` — public-data projections with 95%
+  intervals.
+
+Across the six rolling-origin years, Bayesian RMSE averaged 0.325 versus 0.343
+for persistence, with 0.691 directional accuracy and 0.961 mean 95% interval
+coverage.  Persistence was better in some years (notably 2020 and 2022), so
+this is evidence for a useful public-data forecast, not proof that Bayesian
+inference is uniformly superior.  `dwp_pldr_calibration.csv` records the
+2019--2022 DWP-to-PLDR calibration used to assess the post-2022 welfare
+extension.
+
+### 10. Machine-learning comparison
+
+[`09_public_data_model_comparison.py`](09_public_data_model_comparison.py)
+uses the same lagged features, calibration and rolling-origin splits for
+Bayesian Ridge, ElasticNet, Random Forest and Extra Trees.  Across 2017--2022,
+mean RMSE was 0.325 for Bayesian Ridge, 0.323 for ElasticNet, 0.328 for Random
+Forest and 0.324 for Extra Trees.  ElasticNet had the lowest average RMSE and
+MAE, while Bayesian Ridge is the only model in this comparison that supplies
+direct predictive intervals.  The small differences do not justify claiming
+one universally best model; model selection should also consider calibration,
+stability and interpretability.
+
+Comparison outputs are written to `results/public_model_comparison/`, including
+rolling-origin metrics/predictions and model-specific recursive 2023--2025
+forecasts.
+
+### 11. Sensitivity and spatial pilot
+
+[`10_public_data_sensitivity.py`](10_public_data_sensitivity.py) tests DWP
+calibration, the 2024 QOF carry-forward option and removal of historical SAMHI
+lags.  The calibrated and raw-DWP scenarios gave identical historical scores,
+because DWP is only used after 2022; their 2025 Bayesian forecast means were
+1.28 and 1.41 respectively.  Carrying 2023 QOF forward into 2024 changed the
+mean Bayesian RMSE only marginally (0.325 to 0.324), while removing SAMHI
+history substantially worsened RMSE (0.325 to 0.543).  This supports retaining
+the calibrated public model as the primary specification and treating QOF
+imputation as a sensitivity rather than a preferred value.
+
+[`11_public_spatial_bayesian.py`](11_public_spatial_bayesian.py) is the
+Lincolnshire spatial pilot.  On the same LSOAs and rolling years, the spatial
+CAR-style model averaged RMSE 0.266 versus 0.281 for non-spatial Bayesian
+Ridge, with 0.961 versus 0.929 interval coverage.  This is encouraging but is
+still a screening result; it should be checked on another area and against a
+fully sampled spatial model before being treated as final.
+
 ---
 
 ## Interactive Map Dashboard Guide
@@ -398,4 +620,3 @@ done
 
 git add .gitattributes
 ```
-
