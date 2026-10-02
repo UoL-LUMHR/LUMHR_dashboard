@@ -232,6 +232,11 @@ the spatial hyperparameters and check sensitivity to the boundary definition.
 
 ### 8. Newly added SAMHI component data
 
+The component panel and public-data experiments were regenerated on **2 October
+2026** after the corrected DLA Stat-Xplore export was installed in both local
+source locations. The old files in the five public-data result directories
+were removed before this run.
+
 The repository now contains the three non-hospital SAMHI components in a form
 that can be audited at LSOA level.  The normalisation script is
 [`07_component_reconstruction.py`](07_component_reconstruction.py).  It does
@@ -249,7 +254,7 @@ working-age population counts.
 | Antidepressants | `scripts/utils/source_data/pldr_prescribing_indicators_antidepressants_P_1_07/` | Four quarterly LSOA files per year, 2011--2025; ADQ rate converted to ADQ per person |
 | QOF depression | `scripts/utils/source_data/pldr_qof_indicators_depression_prevalence_QOF_4_12/QOF_4_12_Depression_LSOA_2011_2022.csv` | LSOA estimates 2011--2022; 2018 and 2019 have small gaps retained as missing |
 | DLA/PIP | `scripts/utils/source_data/pldr_welfare_indicators_claimants_DLA_PIP_for_mental_health_learning_difficulties_W_5_05/W_5_05_MH_DLA_PIP_LSOA11.csv` | Annual August snapshots 2010--2022; disclosure-adjusted PLDR values |
-| Raw DWP supplements | `scripts/utils/source_data/DWP_DLA_PIP_data/` | DLA monthly/quarterly extracts cover April 2013--March 2026 (earlier `to_may_2018` plus later `from_may_2018`); the distinct PIP series currently starts January 2019 and continues to July 2026. The historical PIP `to_2019` filename is currently byte-identical to the DLA legacy export and is ignored until corrected. Upstream: [DWP Stat-Xplore](https://stat-xplore.dwp.gov.uk/) |
+| Raw DWP supplements | `scripts/utils/source_data/DWP_DLA_PIP_data/` | DLA monthly/quarterly extracts cover April 2013--March 2026 (earlier `to_may_2018` plus later `from_may_2018`); the historical PIP extract covers April 2013--December 2018 and the current PIP series starts January 2019 and continues to July 2026. The loader ignores the historical PIP file only if it is byte-identical to the DLA export; the corrected repository files are distinct and both series are included. Upstream: [DWP Stat-Xplore](https://stat-xplore.dwp.gov.uk/) |
 | Raw QOF supplements | `scripts/utils/source_data/quality_outcomes_framework/` | Public practice workbooks through 2024--25; the current parser reconstructs 2021--22, 2022--23 and 2024--25, while 2023--24 publishes no depression prevalence field |
 
 Run the component audit with:
@@ -274,19 +279,20 @@ contains no hospital component or official loadings, so the missing hospital
 contribution cannot be recovered from public files.
 
 The corrected panel has complete antidepressant and PLDR QOF coverage for most
-2011--2022 LSOA-years, with small QOF gaps in 2018--2019. For 2023, all three
-observable components are available for 33,348--33,854 LSOAs. For 2024,
-antidepressants and DWP are available but QOF depression prevalence is missing.
-The 2025 rows contain antidepressant and DWP observations plus the latest
-available QOF reconstruction and must be labelled accordingly.
+2011--2022 LSOA-years, with small QOF gaps in 2018--2019. DWP combined
+DLA/PIP coverage is 32,392 LSOAs (98.62%) in 2023, 32,520 (99.01%) in 2024,
+and 32,555 (99.12%) in 2025. QOF depression prevalence remains unavailable for
+2023--2024 in the public practice workbooks, so those later rows must be
+labelled as incomplete-observable forecasts.
 
-The corrected DWP PIP file is now used in the extension. Existing tests found
-DWP and PLDR DLA/PIP claimant counts correlated at 0.82--0.85 over 2019--2022,
-but their levels differ because the extracts use different disclosure,
-benefit-vintage and geography conventions. The newly stitched DLA history
-should be checked against a corrected historical PIP export before extending
-the DWP calibration earlier than 2019. The current forecast scripts retain
-PLDR as the historical SAMHI component through 2022 and use DWP for the
+The corrected DLA file is now used in the extension. The refreshed DWP-to-PLDR
+calibration has usable overlap from 2014--2022, with year-specific Pearson
+correlations from 0.728 to 0.956 and pooled correlation 0.818. The levels still
+differ because the extracts use different disclosure, benefit-vintage and
+geography conventions. The historical PIP filename is included because the
+corrected files are distinct (and would be ignored only if byte-identical to
+the DLA export). The forecast scripts retain PLDR as the
+historical SAMHI component through 2022 and use calibrated DWP for the
 2023--2025 extension.
 
 The public QOF allocation reproduces the PLDR spatial pattern strongly in the
@@ -318,8 +324,8 @@ for persistence, with 0.684 directional accuracy and 0.961 mean 95% interval
 coverage. Persistence was better in some years (notably 2020 and 2022), so
 this is evidence for a useful public-data forecast, not proof that Bayesian
 inference is uniformly superior. `dwp_pldr_calibration.csv` records the
-currently valid 2019--2022 DWP-to-PLDR calibration; the duplicate historical
-PIP export prevents a valid earlier combined calibration.
+refreshed 2014--2022 DWP-to-PLDR calibration; the historical PIP series is
+included now that the corrected files are distinct.
 
 ### 10. Machine-learning comparison
 
@@ -342,9 +348,9 @@ forecasts.
 [`10_public_data_sensitivity.py`](10_public_data_sensitivity.py) tests DWP
 calibration, the 2024 QOF carry-forward option and removal of historical SAMHI
 lags.  The calibrated and raw-DWP scenarios gave identical historical scores,
-because DWP is only used after 2022; their corrected-panel 2025 Bayesian
-forecast means were 1.31 and 1.49 respectively. Carrying 2023 QOF forward into 2024 did not
-change the corrected mean Bayesian RMSE (0.325), while removing SAMHI history
+because DWP is only used after 2022; their refreshed 2025 Bayesian forecast
+means were 1.257 and 1.486 respectively. Carrying 2023 QOF forward into 2024 did not
+change the refreshed mean Bayesian RMSE (0.325), while removing SAMHI history
 substantially worsened ElasticNet RMSE to 0.513. This supports retaining
 the calibrated public model as the primary specification and treating QOF
 imputation as a sensitivity rather than a preferred value.

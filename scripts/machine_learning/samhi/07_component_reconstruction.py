@@ -261,10 +261,10 @@ def load_dwp_welfare(source_root: Path, root: Path) -> pd.DataFrame:
     to the national 2021 boundary names and mapped to LSOA11.  The earlier DLA
     ``to_*`` file covers April 2013--December 2018 and the later DLA file
     continues through 2026; overlapping DLA observations are retained from
-    the later extract.  The historical PIP ``to_*`` file is accepted only when
-    it is distinct from the DLA export; the current repository's PIP file is a
-    duplicate and is ignored.  An optional denominator-normalised rate uses
-    the estimated 16--64 population, with the denominator vintage retained.
+    the later extract.  The historical PIP ``to_*`` file is included when it
+    is distinct from the DLA export; a byte-identical duplicate is ignored to
+    avoid double-counting.  An optional denominator-normalised rate uses the
+    estimated 16--64 population, with the denominator vintage retained.
     """
     dwp_dir = source_root / "DWP_DLA_PIP_data"
     dla_paths = [
@@ -274,15 +274,14 @@ def load_dwp_welfare(source_root: Path, root: Path) -> pd.DataFrame:
     pip_legacy_path = dwp_dir / "PIP_cases_with_entitlement_mental_health_learning_difficulties_to_2019_lsoa.csv"
     pip_current_path = dwp_dir / "PIP_cases_with_entitlement_mental_health_learning_difficulties_from_2019_lsoa.csv"
     pip_paths = [pip_current_path]
-    # The repository currently contains a byte-for-byte duplicate of the DLA
-    # legacy export under the historical PIP filename.  Do not silently treat
-    # that duplicate as PIP observations; include it only once a distinct
-    # corrected Stat-Xplore export is supplied.
+    # Guard against a historical PIP filename that is actually a byte-for-byte
+    # duplicate of the DLA legacy export.  The corrected repository files are
+    # distinct, so the historical PIP series is included.
     dla_legacy_path = dwp_dir / "DLA_claimants_mental_health_learning_difficulties_to_may_2018_lsoa.csv"
     if pip_legacy_path.exists() and (not dla_legacy_path.exists() or not filecmp.cmp(pip_legacy_path, dla_legacy_path, shallow=False)):
         pip_paths.insert(0, pip_legacy_path)
     elif pip_legacy_path.exists() and dla_legacy_path.exists():
-        LOGGER.warning("Ignoring %s because it is byte-identical to the DLA legacy export; a distinct historical PIP file is required.", pip_legacy_path.name)
+        LOGGER.warning("Ignoring %s because it is byte-identical to the DLA legacy export.", pip_legacy_path.name)
     boundary_path = root / "datasets" / "england_lsoa" / "Lower_layer_Super_Output_Areas_December_2021_Boundaries_EW_BSC_V4_6894679968818356315.geojson"
     output_columns = [
         "lsoa11", "year", "dwp_dla_pip_count", "dwp_dla_pip_rate_pct",
