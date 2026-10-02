@@ -362,6 +362,24 @@ Ridge, with 0.959 versus 0.927 interval coverage. This is encouraging but is
 still a screening result; it should be checked on another area and against a
 fully sampled spatial model before being treated as final.
 
+### Public-data result charts
+
+[`12_public_data_plots.py`](12_public_data_plots.py) creates six charts from
+the refreshed outputs without retraining any model:
+
+```bash
+scripts/.venv/bin/python scripts/machine_learning/samhi/12_public_data_plots.py
+```
+
+The PNGs are written to `results/public_plots/`:
+
+* `01_public_model_ranking.png` — mean RMSE by public-data model;
+* `02_public_rolling_origin_rmse.png` — year-by-year held-out error;
+* `03_public_forecast_trajectories.png` — 2023--2025 model means and the Bayesian interval;
+* `04_component_correlations.png` — Pearson/Spearman agreement with published SAMHI;
+* `05_component_coverage.png` — available LSOA coverage for each observable component; and
+* `06_spatial_bayesian_comparison.png` — spatial versus non-spatial error and interval coverage.
+
 ---
 
 ## Interactive Map Dashboard Guide
