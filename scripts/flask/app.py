@@ -149,6 +149,12 @@ def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
     panel["year"] = pd.to_numeric(panel["year"], errors="coerce")
     panel = panel[panel["year"].isin(DWP_AVAILABLE_YEARS)].copy()
     panel["lsoa11"] = panel["lsoa11"].astype(str).str.strip()
+    parent_denominators = panel[["lsoa11", "year", "dwp_dla_pip_count", "dwp_dla_pip_rate_pct"]].copy()
+    parent_denominators["parent_denominator"] = (
+        pd.to_numeric(parent_denominators["dwp_dla_pip_count"], errors="coerce")
+        / pd.to_numeric(parent_denominators["dwp_dla_pip_rate_pct"], errors="coerce").replace(0.0, pd.NA)
+        * 100.0
+    )
 
     lookup = pd.read_csv(
         lookup_path,
@@ -203,14 +209,62 @@ def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
     panel["dwp_pip_rate_pct"] = pd.to_numeric(panel["dwp_pip_count"], errors="coerce") / denominator * 100.0
     output = panel[["LSOA_CODE", "year", "dwp_dla_pip_count", "dwp_dla_pip_rate_pct", "dwp_dla_count", "dwp_pip_count", "dwp_dla_rate_pct", "dwp_pip_rate_pct", "dwp_population_source_year", "dla_pip_source"]].copy()
 
-    # If one benefit is disclosure-suppressed, the reconstructed panel may
-    # have no row at all. Preserve the available component from the raw
-    # export, using the dashboard's 2024 18–64 population estimate as an
-    # explicitly labelled fallback denominator.
+    # The map uses 2021 LSOA geometries, while the reconstructed panel is now
+    # aggregated to 2011 SAMHI geographies. For one-to-many 2011→2021 splits,
+    # remove any parent-derived rows and rebuild each child from the raw DWP
+    # count, allocating the parent's panel denominator by each child's current
+    # working-age population share. This prevents a split child from being
+    # dropped or duplicated after the lookup join.
     if not raw_counts.empty:
+        split_lsoa11 = (
+            lookup.groupby("lsoa11")["LSOA_CODE"]
+            .nunique()
+            .loc[lambda values: values.gt(1)]
+            .index
+        )
+        split_lookup = lookup[lookup["lsoa11"].isin(split_lsoa11)].copy()
+        allocated = pd.DataFrame()
+        if not split_lookup.empty:
+            output = output[~output["LSOA_CODE"].isin(split_lookup["LSOA_CODE"])]
+            allocated = raw_counts.merge(split_lookup, on="LSOA_CODE", how="inner")
+            allocated = allocated.merge(
+                parent_denominators[["lsoa11", "year", "parent_denominator"]],
+                on=["lsoa11", "year"],
+                how="left",
+            )
+            child_population = LSOA_METRICS[["LSOA_CODE", "ONS_Pop_18to64"]].copy()
+            allocated = allocated.merge(child_population, on="LSOA_CODE", how="left")
+            allocated["parent_child_population"] = allocated.groupby(["lsoa11", "year"])["ONS_Pop_18to64"].transform("sum")
+            complete_split = (
+                allocated["parent_denominator"].notna()
+                & allocated["dwp_dla_count"].notna()
+                & allocated["dwp_pip_count"].notna()
+            )
+            allocated["dwp_denominator"] = (
+                allocated["parent_denominator"].where(complete_split)
+                * allocated["ONS_Pop_18to64"]
+                / allocated["parent_child_population"].replace(0.0, pd.NA)
+            )
+            allocated["dwp_denominator"] = allocated["dwp_denominator"].fillna(
+                pd.to_numeric(allocated["ONS_Pop_18to64"], errors="coerce")
+            )
+            allocated["dwp_dla_pip_count"] = allocated[["dwp_dla_count", "dwp_pip_count"]].sum(axis=1, min_count=1)
+            denominator = allocated["dwp_denominator"].replace(0.0, pd.NA)
+            allocated["dwp_dla_pip_rate_pct"] = allocated["dwp_dla_pip_count"] / denominator * 100.0
+            allocated["dwp_dla_rate_pct"] = allocated["dwp_dla_count"] / denominator * 100.0
+            allocated["dwp_pip_rate_pct"] = allocated["dwp_pip_count"] / denominator * 100.0
+            allocated["dwp_population_source_year"] = 2024.0
+            allocated["dla_pip_source"] = complete_split.map(
+                {True: "DWP_August_split_parent_denominator", False: "DWP_August_split_18to64_fallback"}
+            )
+
         existing_keys = output[["LSOA_CODE", "year"]].assign(_present=True)
         partial = raw_counts.merge(existing_keys, on=["LSOA_CODE", "year"], how="left")
         partial = partial[partial["_present"].isna()].drop(columns=["_present"], errors="ignore")
+        if not allocated.empty:
+            allocated_keys = allocated[["LSOA_CODE", "year"]].assign(_allocated=True)
+            partial = partial.merge(allocated_keys, on=["LSOA_CODE", "year"], how="left")
+            partial = partial[partial["_allocated"].isna()].drop(columns=["_allocated"], errors="ignore")
         pop = LSOA_METRICS[["LSOA_CODE", "ONS_Pop_18to64"]].copy()
         partial = partial.merge(pop, on="LSOA_CODE", how="left")
         partial["dwp_population_source_year"] = 2024.0
@@ -220,10 +274,12 @@ def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
         partial["dwp_dla_rate_pct"] = partial["dwp_dla_count"] / denominator.replace(0.0, pd.NA) * 100.0
         partial["dwp_pip_rate_pct"] = partial["dwp_pip_count"] / denominator.replace(0.0, pd.NA) * 100.0
         partial["dla_pip_source"] = "DWP_August_partial_18to64_fallback"
-        output = pd.concat(
-            [output, partial[["LSOA_CODE", "year", "dwp_dla_pip_count", "dwp_dla_pip_rate_pct", "dwp_dla_count", "dwp_pip_count", "dwp_dla_rate_pct", "dwp_pip_rate_pct", "dwp_population_source_year", "dla_pip_source"]]],
-            ignore_index=True,
-        )
+        append_columns = ["LSOA_CODE", "year", "dwp_dla_pip_count", "dwp_dla_pip_rate_pct", "dwp_dla_count", "dwp_pip_count", "dwp_dla_rate_pct", "dwp_pip_rate_pct", "dwp_population_source_year", "dla_pip_source"]
+        frames = [output]
+        if not allocated.empty:
+            frames.append(allocated[append_columns])
+        frames.append(partial[append_columns])
+        output = pd.concat(frames, ignore_index=True)
     return output.drop_duplicates(["LSOA_CODE", "year"], keep="last")
 
 

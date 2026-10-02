@@ -52,7 +52,12 @@ component of official SAMHI. The map defaults use the latest 2025 DWP snapshot;
 therefore a Need or Access Gap score should be treated as a current public-data
 composite, not as a temporally matched historical SAMHI score. When one benefit
 is disclosure-suppressed, the available component is retained using a marked
-18–64 denominator fallback rather than being silently dropped.
+18–64 denominator fallback rather than being silently dropped. For one-to-many
+2011-to-2021 splits, the map keeps every 2021 child LSOA: complete DLA/PIP
+children use the parent panel denominator allocated by working-age population,
+while partially suppressed children use the marked child 18–64 fallback. This
+prevents the duplicate-parent rows that previously affected the ML panel and
+could cause map children to disappear.
 
 ## Getting Started
 

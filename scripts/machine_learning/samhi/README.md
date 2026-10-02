@@ -238,12 +238,18 @@ that can be audited at LSOA level.  The normalisation script is
 not invent the missing hospital component: it writes it as missing until an
 approved NHS extract or a validated EMAS proxy is available.
 
+For the DWP supplements, the exact-fit 2011-to-2021 lookup is applied and
+split 2021 children are aggregated back to one 2011 LSOA-year before joining
+the SAMHI target. This prevents split geographies from duplicating ML
+observations and recalculates DLA/PIP rates from the summed claimant and
+working-age population counts.
+
 | Component | Local source | Coverage in the new audit |
 |---|---|---|
 | Antidepressants | `scripts/utils/source_data/pldr_prescribing_indicators_antidepressants_P_1_07/` | Four quarterly LSOA files per year, 2011--2025; ADQ rate converted to ADQ per person |
 | QOF depression | `scripts/utils/source_data/pldr_qof_indicators_depression_prevalence_QOF_4_12/QOF_4_12_Depression_LSOA_2011_2022.csv` | LSOA estimates 2011--2022; 2018 and 2019 have small gaps retained as missing |
 | DLA/PIP | `scripts/utils/source_data/pldr_welfare_indicators_claimants_DLA_PIP_for_mental_health_learning_difficulties_W_5_05/W_5_05_MH_DLA_PIP_LSOA11.csv` | Annual August snapshots 2010--2022; disclosure-adjusted PLDR values |
-| Raw DWP supplements | `datasets/DWP_DLA_PIP_data/` (legacy fallback: `scripts/utils/source_data/DWP_DLA_PIP_data/`) | DLA quarterly May 2018--March 2026 and corrected PIP monthly January 2019--July 2026; August DLA+PIP snapshots provide a post-PLDR extension for 2023--2025. Upstream: [DWP Stat-Xplore](https://stat-xplore.dwp.gov.uk/) |
+| Raw DWP supplements | `scripts/utils/source_data/DWP_DLA_PIP_data/` | DLA monthly/quarterly extracts cover April 2013--March 2026 (earlier `to_may_2018` plus later `from_may_2018`); the distinct PIP series currently starts January 2019 and continues to July 2026. The historical PIP `to_2019` filename is currently byte-identical to the DLA legacy export and is ignored until corrected. Upstream: [DWP Stat-Xplore](https://stat-xplore.dwp.gov.uk/) |
 | Raw QOF supplements | `scripts/utils/source_data/quality_outcomes_framework/` | Public practice workbooks through 2024--25; the current parser reconstructs 2021--22, 2022--23 and 2024--25, while 2023--24 publishes no depression prevalence field |
 
 Run the component audit with:
@@ -258,18 +264,30 @@ Outputs are written to `results/component_reconstruction/`:
 * `component_coverage.csv` — row-level coverage by year and component; and
 * `component_vs_published_samhi_correlations.csv` — cross-sectional diagnostics against the published SAMHI index.
 
-The three-component z-score mean is only a diagnostic.  It is not the SAMHI
+The three-component z-score mean is only a diagnostic. It is not the SAMHI
 index because it omits the hospital component and does not use the published
-two-factor loading structure.  In the first audit its 2022 cross-sectional
-correlation with published SAMHI was approximately 0.85, which supports
-further work but does not demonstrate reproducibility.
+two-factor loading structure. The refreshed 2011--2022 audit has mean Pearson
+correlation 0.843 and mean Spearman correlation 0.858 with published SAMHI;
+the 2022 Pearson correlation is 0.853. This is an empirical proxy diagnostic,
+not reproduction of the official four-component index. The published CSV
+contains no hospital component or official loadings, so the missing hospital
+contribution cannot be recovered from public files.
 
-The corrected DWP PIP file is now used in the extension.  DWP and PLDR
-DLA/PIP claimant counts correlate at 0.82--0.85 over their 2019--2022 overlap,
+The corrected panel has complete antidepressant and PLDR QOF coverage for most
+2011--2022 LSOA-years, with small QOF gaps in 2018--2019. For 2023, all three
+observable components are available for 33,348--33,854 LSOAs. For 2024,
+antidepressants and DWP are available but QOF depression prevalence is missing.
+The 2025 rows contain antidepressant and DWP observations plus the latest
+available QOF reconstruction and must be labelled accordingly.
+
+The corrected DWP PIP file is now used in the extension. Existing tests found
+DWP and PLDR DLA/PIP claimant counts correlated at 0.82--0.85 over 2019--2022,
 but their levels differ because the extracts use different disclosure,
-benefit-vintage and geography conventions.  Therefore PLDR remains the
-historical SAMHI component through 2022; DWP counts are used only for the
-2023--2025 extension and should be calibrated in a sensitivity analysis.
+benefit-vintage and geography conventions. The newly stitched DLA history
+should be checked against a corrected historical PIP export before extending
+the DWP calibration earlier than 2019. The current forecast scripts retain
+PLDR as the historical SAMHI component through 2022 and use DWP for the
+2023--2025 extension.
 
 The public QOF allocation reproduces the PLDR spatial pattern strongly in the
 overlap (Pearson correlation approximately 0.98 for the 2021/22 alignment),
@@ -295,21 +313,21 @@ imputed.  Rolling-origin results for 2017--2022 are written to
 * `future_predictions_2023_2025.csv` — public-data projections with 95%
   intervals.
 
-Across the six rolling-origin years, Bayesian RMSE averaged 0.325 versus 0.343
-for persistence, with 0.691 directional accuracy and 0.961 mean 95% interval
-coverage.  Persistence was better in some years (notably 2020 and 2022), so
+Across the six rolling-origin years, Bayesian RMSE averaged 0.325 versus 0.346
+for persistence, with 0.684 directional accuracy and 0.961 mean 95% interval
+coverage. Persistence was better in some years (notably 2020 and 2022), so
 this is evidence for a useful public-data forecast, not proof that Bayesian
-inference is uniformly superior.  `dwp_pldr_calibration.csv` records the
-2019--2022 DWP-to-PLDR calibration used to assess the post-2022 welfare
-extension.
+inference is uniformly superior. `dwp_pldr_calibration.csv` records the
+currently valid 2019--2022 DWP-to-PLDR calibration; the duplicate historical
+PIP export prevents a valid earlier combined calibration.
 
 ### 10. Machine-learning comparison
 
 [`09_public_data_model_comparison.py`](09_public_data_model_comparison.py)
 uses the same lagged features, calibration and rolling-origin splits for
 Bayesian Ridge, ElasticNet, Random Forest and Extra Trees.  Across 2017--2022,
-mean RMSE was 0.325 for Bayesian Ridge, 0.323 for ElasticNet, 0.328 for Random
-Forest and 0.324 for Extra Trees.  ElasticNet had the lowest average RMSE and
+mean RMSE was 0.325 for Bayesian Ridge, 0.322 for ElasticNet, 0.331 for Random
+Forest and 0.327 for Extra Trees. ElasticNet had the lowest average RMSE and
 MAE, while Bayesian Ridge is the only model in this comparison that supplies
 direct predictive intervals.  The small differences do not justify claiming
 one universally best model; model selection should also consider calibration,
@@ -324,17 +342,17 @@ forecasts.
 [`10_public_data_sensitivity.py`](10_public_data_sensitivity.py) tests DWP
 calibration, the 2024 QOF carry-forward option and removal of historical SAMHI
 lags.  The calibrated and raw-DWP scenarios gave identical historical scores,
-because DWP is only used after 2022; their 2025 Bayesian forecast means were
-1.28 and 1.41 respectively.  Carrying 2023 QOF forward into 2024 changed the
-mean Bayesian RMSE only marginally (0.325 to 0.324), while removing SAMHI
-history substantially worsened RMSE (0.325 to 0.543).  This supports retaining
+because DWP is only used after 2022; their corrected-panel 2025 Bayesian
+forecast means were 1.31 and 1.49 respectively. Carrying 2023 QOF forward into 2024 did not
+change the corrected mean Bayesian RMSE (0.325), while removing SAMHI history
+substantially worsened ElasticNet RMSE to 0.513. This supports retaining
 the calibrated public model as the primary specification and treating QOF
 imputation as a sensitivity rather than a preferred value.
 
 [`11_public_spatial_bayesian.py`](11_public_spatial_bayesian.py) is the
 Lincolnshire spatial pilot.  On the same LSOAs and rolling years, the spatial
-CAR-style model averaged RMSE 0.266 versus 0.281 for non-spatial Bayesian
-Ridge, with 0.961 versus 0.929 interval coverage.  This is encouraging but is
+CAR-style model averaged RMSE 0.267 versus 0.283 for non-spatial Bayesian
+Ridge, with 0.959 versus 0.927 interval coverage. This is encouraging but is
 still a screening result; it should be checked on another area and against a
 fully sampled spatial model before being treated as final.
 

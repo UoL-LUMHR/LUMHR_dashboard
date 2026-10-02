@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import filecmp
 import json
 import importlib.util
 import logging
@@ -254,21 +255,42 @@ def _read_dwp_statxplore_august(path: Path, name_to_lsoa21: Dict[str, str]) -> p
 
 
 def load_dwp_welfare(source_root: Path, root: Path) -> pd.DataFrame:
-    """Combine DWP DLA and PIP August counts after the PLDR series ends.
+    """Combine DWP DLA and PIP August counts from 2013 onward.
 
     The DWP files are 2021-LSOA, wide Stat-Xplore extracts.  Counts are joined
-    to the national 2021 boundary names and mapped to LSOA11.  An optional
-    denominator-normalised rate uses the estimated 16--64 population.  A 2024
-    population denominator is used for the 2025 August snapshot because
-    mid-2025 population estimates are not in the repository; that vintage is
-    retained explicitly.
+    to the national 2021 boundary names and mapped to LSOA11.  The earlier DLA
+    ``to_*`` file covers April 2013--December 2018 and the later DLA file
+    continues through 2026; overlapping DLA observations are retained from
+    the later extract.  The historical PIP ``to_*`` file is accepted only when
+    it is distinct from the DLA export; the current repository's PIP file is a
+    duplicate and is ignored.  An optional denominator-normalised rate uses
+    the estimated 16--64 population, with the denominator vintage retained.
     """
     dwp_dir = source_root / "DWP_DLA_PIP_data"
-    dla_path = dwp_dir / "DLA_claimants_mental_health_learning_difficulties_from_may_2018_lsoa.csv"
-    pip_path = dwp_dir / "PIP_cases_with_entitlement_mental_health_learning_difficulties_from_2019_lsoa.csv"
+    dla_paths = [
+        dwp_dir / "DLA_claimants_mental_health_learning_difficulties_to_may_2018_lsoa.csv",
+        dwp_dir / "DLA_claimants_mental_health_learning_difficulties_from_may_2018_lsoa.csv",
+    ]
+    pip_legacy_path = dwp_dir / "PIP_cases_with_entitlement_mental_health_learning_difficulties_to_2019_lsoa.csv"
+    pip_current_path = dwp_dir / "PIP_cases_with_entitlement_mental_health_learning_difficulties_from_2019_lsoa.csv"
+    pip_paths = [pip_current_path]
+    # The repository currently contains a byte-for-byte duplicate of the DLA
+    # legacy export under the historical PIP filename.  Do not silently treat
+    # that duplicate as PIP observations; include it only once a distinct
+    # corrected Stat-Xplore export is supplied.
+    dla_legacy_path = dwp_dir / "DLA_claimants_mental_health_learning_difficulties_to_may_2018_lsoa.csv"
+    if pip_legacy_path.exists() and (not dla_legacy_path.exists() or not filecmp.cmp(pip_legacy_path, dla_legacy_path, shallow=False)):
+        pip_paths.insert(0, pip_legacy_path)
+    elif pip_legacy_path.exists() and dla_legacy_path.exists():
+        LOGGER.warning("Ignoring %s because it is byte-identical to the DLA legacy export; a distinct historical PIP file is required.", pip_legacy_path.name)
     boundary_path = root / "datasets" / "england_lsoa" / "Lower_layer_Super_Output_Areas_December_2021_Boundaries_EW_BSC_V4_6894679968818356315.geojson"
-    if not dla_path.exists() or not pip_path.exists() or not boundary_path.exists():
-        return pd.DataFrame(columns=["lsoa11", "year", "dwp_dla_pip_count", "dwp_dla_pip_rate_pct", "dwp_dla_count", "dwp_pip_count", "dwp_population_source_year"])
+    output_columns = [
+        "lsoa11", "year", "dwp_dla_pip_count", "dwp_dla_pip_rate_pct",
+        "dwp_dla_count", "dwp_pip_count", "dwp_dla_rate_pct",
+        "dwp_pip_rate_pct", "dwp_population_source_year",
+    ]
+    if not all(path.exists() for path in [*dla_paths, *pip_paths, boundary_path]):
+        return pd.DataFrame(columns=output_columns)
     with boundary_path.open() as handle:
         geojson = json.load(handle)
     name_to_lsoa21 = {
@@ -276,11 +298,22 @@ def load_dwp_welfare(source_root: Path, root: Path) -> pd.DataFrame:
         for feature in geojson["features"]
         if feature.get("properties", {}).get("LSOA21NM")
     }
-    dla = _read_dwp_statxplore_august(dla_path, name_to_lsoa21).rename(columns={"value": "dwp_dla_count"})
-    pip = _read_dwp_statxplore_august(pip_path, name_to_lsoa21).rename(columns={"value": "dwp_pip_count"})
-    if dla.empty or pip.empty:
-        return pd.DataFrame(columns=["lsoa11", "year", "dwp_dla_pip_count", "dwp_dla_pip_rate_pct", "dwp_dla_count", "dwp_pip_count", "dwp_population_source_year"])
-    out = dla.merge(pip, on=["lsoa21", "year"], how="inner")
+    # Concatenate the historical and current extracts.  ``keep='last'`` uses
+    # the later DLA file for the May--December 2018 overlap while preserving
+    # all pre-2018 observations from the earlier file.
+    dla = pd.concat(
+        [_read_dwp_statxplore_august(path, name_to_lsoa21) for path in dla_paths],
+        ignore_index=True,
+    ).rename(columns={"value": "dwp_dla_count"})
+    dla = dla.drop_duplicates(["lsoa21", "year"], keep="last")
+    pip = pd.concat(
+        [_read_dwp_statxplore_august(path, name_to_lsoa21) for path in pip_paths],
+        ignore_index=True,
+    ).rename(columns={"value": "dwp_pip_count"})
+    pip = pip.drop_duplicates(["lsoa21", "year"], keep="last")
+    if dla.empty and pip.empty:
+        return pd.DataFrame(columns=output_columns)
+    out = dla.merge(pip, on=["lsoa21", "year"], how="outer")
     out["dwp_dla_pip_count"] = out[["dwp_dla_count", "dwp_pip_count"]].sum(axis=1, min_count=2)
     lookup_path = root / "datasets" / "lincolnshire_lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
     # Use the national lookup copy if available; otherwise retain 2021 codes
@@ -293,20 +326,30 @@ def load_dwp_welfare(source_root: Path, root: Path) -> pd.DataFrame:
         out = out.merge(lookup.drop_duplicates("lsoa21"), on="lsoa21", how="inner")
     else:
         out["lsoa11"] = out["lsoa21"]
-    # DWP snapshots begin in 2019; limiting the parser to the required
-    # denominator vintages keeps this audit reproducible without rereading the
-    # legacy 2011--2018 workbooks on every run.
-    population = _load_population_helper(root).load_historical_population(source_root, min_year=2019, max_year=2024)
+    population = _load_population_helper(root).load_historical_population(source_root, min_year=2013, max_year=2024)
     population = population.rename(columns={"source_year": "population_source_year"})
     population = population[["lsoa21", "population_source_year", "pop_total", "pop_working_age_pct"]]
     # Select the latest available denominator not later than each DWP year.
     out = out.merge(population, on="lsoa21", how="left")
     out = out[out["population_source_year"] <= out["year"]].copy()
     out = out.sort_values(["lsoa21", "year", "population_source_year"]).drop_duplicates(["lsoa21", "year"], keep="last")
-    denominator = out["pop_total"] * out["pop_working_age_pct"] / 100.0
-    out["dwp_dla_pip_rate_pct"] = out["dwp_dla_pip_count"] / denominator.replace(0, np.nan) * 100.0
-    out["dwp_population_source_year"] = out["population_source_year"]
-    return out[["lsoa11", "year", "dwp_dla_pip_count", "dwp_dla_pip_rate_pct", "dwp_dla_count", "dwp_pip_count", "dwp_population_source_year"]]
+    # Aggregate 2021 children back to the 2011 SAMHI geography before the
+    # panel merge. A one-to-many lookup must sum claimant counts and the
+    # corresponding working-age denominators; retaining child rows would
+    # duplicate target observations and distort ML metrics.
+    out["dwp_denominator"] = out["pop_total"] * out["pop_working_age_pct"] / 100.0
+    out = out.groupby(["lsoa11", "year"], as_index=False).agg(
+        dwp_dla_count=("dwp_dla_count", lambda values: values.sum(min_count=1)),
+        dwp_pip_count=("dwp_pip_count", lambda values: values.sum(min_count=1)),
+        dwp_denominator=("dwp_denominator", lambda values: values.sum(min_count=1)),
+        dwp_population_source_year=("population_source_year", "max"),
+    )
+    out["dwp_dla_pip_count"] = out[["dwp_dla_count", "dwp_pip_count"]].sum(axis=1, min_count=2)
+    denominator = out["dwp_denominator"].replace(0, np.nan)
+    out["dwp_dla_rate_pct"] = out["dwp_dla_count"] / denominator * 100.0
+    out["dwp_pip_rate_pct"] = out["dwp_pip_count"] / denominator * 100.0
+    out["dwp_dla_pip_rate_pct"] = out["dwp_dla_pip_count"] / denominator * 100.0
+    return out[output_columns]
 
 
 def zscore_by_year(panel: pd.DataFrame, column: str) -> pd.Series:

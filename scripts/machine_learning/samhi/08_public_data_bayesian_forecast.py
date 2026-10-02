@@ -52,7 +52,10 @@ def load_panel(root: Path) -> pd.DataFrame:
 def dwp_calibration(panel: pd.DataFrame) -> pd.DataFrame:
     """Estimate overlap calibration from DWP counts to PLDR claimant counts."""
     rows = []
-    overlap = panel[panel["year"].between(2019, 2022)].dropna(subset=["dla_pip", "dwp_dla_pip_count"])
+    # Use every pre-2023 year for which both PLDR and a valid, non-duplicate
+    # DWP combined count are present. With the current files this begins in
+    # 2019 because the historical PIP export is still missing/corrupted.
+    overlap = panel[panel["year"].le(2022)].dropna(subset=["dla_pip", "dwp_dla_pip_count"])
     for year, group in overlap.groupby("year"):
         x = group["dwp_dla_pip_count"].to_numpy(dtype=float)
         y = group["dla_pip"].to_numpy(dtype=float)
