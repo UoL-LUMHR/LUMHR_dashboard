@@ -1,0 +1,6 @@
+model,method,feature,label,domain,description,importance_abs,importance_pct
+Ridge,LinearSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.4294388909228272,38.37109132627416
+Ridge,LinearSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.283951933957183,25.3715856212502
+Ridge,LinearSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.28012376119749477,25.02953190958218
+Ridge,LinearSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.11257570734232727,10.058829879775885
+Ridge,LinearSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.013082698745688766,1.1689612631175688

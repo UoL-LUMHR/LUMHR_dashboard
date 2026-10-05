@@ -1,0 +1,6 @@
+model,method,feature,label,domain,description,importance_abs,importance_pct
+ElasticNet,LinearSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.22063784372502193,28.959445503937662
+ElasticNet,LinearSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.20407190292721633,26.785111075826574
+ElasticNet,LinearSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.16250113801499072,21.328810920296753
+ElasticNet,LinearSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.15256151757848915,20.024202918781697
+ElasticNet,LinearSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.02211319288772963,2.902429581157313

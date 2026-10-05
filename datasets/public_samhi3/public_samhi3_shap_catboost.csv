@@ -1,0 +1,6 @@
+model,method,feature,label,domain,description,importance_abs,importance_pct
+CatBoost,TreeSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.5089456627572203,70.99082836680746
+CatBoost,TreeSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.07026402759351968,9.800852798762582
+CatBoost,TreeSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.0635808346914266,8.868640511728948
+CatBoost,TreeSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.05588815709193894,7.7956191754474755
+CatBoost,TreeSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.01823880490733798,2.544059147253529

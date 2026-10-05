@@ -1,0 +1,6 @@
+model,method,feature,label,domain,description,importance_abs,importance_pct
+BayesianRidge,LinearSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.43664029723996245,38.35428551272773
+BayesianRidge,LinearSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.2883507094350126,25.32859543055449
+BayesianRidge,LinearSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.2815096985146805,24.72768413653824
+BayesianRidge,LinearSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.11889450667616974,10.443639498638959
+BayesianRidge,LinearSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.013044186503530128,1.1457954215405737

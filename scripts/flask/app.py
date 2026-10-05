@@ -21,7 +21,19 @@ BASE_DIR = resolve_base_dir(Path(__file__))
 DATASETS_DIR = BASE_DIR / "datasets"
 GEOJSON_REL_PATH = "lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson"
 ENGLAND_GEOJSON_REL_PATH = "england_lsoa/Lower_layer_Super_Output_Areas_December_2021_Boundaries_EW_BSC_V4_6894679968818356315.geojson"
-ML_RESULTS_DIR = BASE_DIR / "scripts" / "machine_learning" / "samhi" / "results"
+SAMHI_FORECAST_DATA_DIR = DATASETS_DIR / "samhi_forecast"
+PUBLIC_SAMHI3_DATA_DIR = DATASETS_DIR / "public_samhi3"
+
+
+def _dashboard_data_path(directory: Path, filename: str) -> Path:
+    """Return a tracked dashboard data file, allowing GitHub-safe gzip storage."""
+    path = directory / filename
+    compressed_path = Path(f"{path}.gz")
+    if path.exists():
+        return path
+    if compressed_path.exists():
+        return compressed_path
+    return path
 
 # Load once at startup so API requests only do lightweight transforms.
 BUNDLE = get_prepared_bundle_cached(str(BASE_DIR))
@@ -49,17 +61,8 @@ def _read_public_dwp_august_counts(base_dir: Path) -> pd.DataFrame:
         "dwp_dla_count": "DLA_claimants_mental_health_learning_difficulties_from_may_2018_lsoa.csv",
         "dwp_pip_count": "PIP_cases_with_entitlement_mental_health_learning_difficulties_from_2019_lsoa.csv",
     }
-    # Prefer the dashboard's datasets copy.  Keep the historical source_data
-    # location as a compatibility fallback for older checkouts.
-    source_dirs = [
-        base_dir / "datasets" / "DWP_DLA_PIP_data",
-        base_dir / "scripts" / "utils" / "source_data" / "DWP_DLA_PIP_data",
-    ]
-    source_dir = next(
-        (candidate for candidate in source_dirs if all((candidate / filename).exists() for filename in filenames.values())),
-        None,
-    )
-    if source_dir is None or not boundary_path.exists():
+    source_dir = base_dir / "datasets" / "DWP_DLA_PIP_data"
+    if not all((source_dir / filename).exists() for filename in filenames.values()) or not boundary_path.exists():
         return pd.DataFrame(columns=["LSOA_CODE", "year", "dwp_dla_count", "dwp_pip_count"])
     files = {name: source_dir / filename for name, filename in filenames.items()}
 
@@ -120,7 +123,7 @@ def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
     importing the dashboard therefore does not pay the cost of reading the
     100+ MB national panel when the DWP overlay is not used.
     """
-    panel_path = Path(base_dir) / "scripts" / "machine_learning" / "samhi" / "results" / "component_reconstruction" / "three_component_panel.csv"
+    panel_path = _dashboard_data_path(Path(base_dir) / "datasets" / "samhi_forecast", "three_component_panel.csv")
     lookup_path = (
         Path(base_dir)
         / "datasets"
@@ -1309,7 +1312,7 @@ def _get_public_samhi3_df(scope: str = "lincolnshire") -> pd.DataFrame:
     clean_scope = "lincolnshire" if scope == "lincolnshire" else "national"
     if clean_scope in _PUBLIC_SAMHI3_CACHE:
         return _PUBLIC_SAMHI3_CACHE[clean_scope]
-    path = ML_RESULTS_DIR / "public_samhi3_web" / "public_samhi3_web_predictions.csv"
+    path = _dashboard_data_path(PUBLIC_SAMHI3_DATA_DIR, "public_samhi3_web_predictions.csv")
     lookup_path = DATASETS_DIR / "lincolnshire_lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
     if not path.exists() or not lookup_path.exists():
         _PUBLIC_SAMHI3_CACHE[clean_scope] = pd.DataFrame()
@@ -1339,7 +1342,7 @@ def _get_public_samhi3_df(scope: str = "lincolnshire") -> pd.DataFrame:
 def _get_public_samhi3_metrics() -> pd.DataFrame:
     global _PUBLIC_SAMHI3_METRICS_CACHE
     if _PUBLIC_SAMHI3_METRICS_CACHE is None:
-        path = ML_RESULTS_DIR / "public_target_tournament" / "model_summary.csv"
+        path = _dashboard_data_path(PUBLIC_SAMHI3_DATA_DIR, "model_summary.csv")
         _PUBLIC_SAMHI3_METRICS_CACHE = pd.read_csv(path) if path.exists() else pd.DataFrame()
     return _PUBLIC_SAMHI3_METRICS_CACHE
 
@@ -1349,7 +1352,7 @@ def _get_public_samhi3_shap(model: str = "BayesianRidge") -> pd.DataFrame:
     allowed = {"BayesianRidge", "ElasticNet", "Ridge", "RandomForest", "ExtraTrees", "LightGBM", "XGBoost", "CatBoost"}
     clean_model = model if model in allowed else "BayesianRidge"
     if clean_model not in _PUBLIC_SAMHI3_SHAP_CACHE:
-        path = ML_RESULTS_DIR / "public_samhi3_shap" / f"public_samhi3_shap_{clean_model.lower()}.csv"
+        path = _dashboard_data_path(PUBLIC_SAMHI3_DATA_DIR, f"public_samhi3_shap_{clean_model.lower()}.csv")
         _PUBLIC_SAMHI3_SHAP_CACHE[clean_model] = pd.read_csv(path) if path.exists() else pd.DataFrame()
     return _PUBLIC_SAMHI3_SHAP_CACHE[clean_model]
 
@@ -1360,9 +1363,15 @@ def _get_ml_predictions_df(scope: str = "lincolnshire", experiment_set: int = 1)
     cache_key = (clean_scope, experiment_set)
     if cache_key not in _ML_PREDICTIONS_CACHE:
         suffix = "pre_covid_2018_2019" if experiment_set == 2 else "2020_2022"
-        csv_path = ML_RESULTS_DIR / f"multimodal_predictions_{suffix}_{clean_scope}.csv"
+        csv_path = _dashboard_data_path(
+            SAMHI_FORECAST_DATA_DIR,
+            f"multimodal_predictions_{suffix}_{clean_scope}.csv",
+        )
         if not csv_path.exists():
-            csv_path = ML_RESULTS_DIR / f"baseline_predictions_{suffix}_{clean_scope}.csv"
+            csv_path = _dashboard_data_path(
+                SAMHI_FORECAST_DATA_DIR,
+                f"baseline_predictions_{suffix}_{clean_scope}.csv",
+            )
         if csv_path.exists():
             df = pd.read_csv(csv_path)
             df["lsoa11"] = df["lsoa11"].astype(str).str.strip()
@@ -1410,9 +1419,15 @@ def _get_ml_metrics_df(experiment_set: int = 1) -> pd.DataFrame:
     experiment_set = 2 if experiment_set == 2 else 1
     if experiment_set not in _ML_METRICS_CACHE:
         suffix = "pre_covid_2018_2019" if experiment_set == 2 else "2020_2022"
-        csv_path = ML_RESULTS_DIR / f"multimodal_metrics_comparison_{suffix}.csv"
+        csv_path = _dashboard_data_path(
+            SAMHI_FORECAST_DATA_DIR,
+            f"multimodal_metrics_comparison_{suffix}.csv",
+        )
         if not csv_path.exists():
-            csv_path = ML_RESULTS_DIR / f"baseline_metrics_comparison_{suffix}.csv"
+            csv_path = _dashboard_data_path(
+                SAMHI_FORECAST_DATA_DIR,
+                f"baseline_metrics_comparison_{suffix}.csv",
+            )
         _ML_METRICS_CACHE[experiment_set] = pd.read_csv(csv_path) if csv_path.exists() else pd.DataFrame()
     return _ML_METRICS_CACHE[experiment_set]
 
@@ -1432,10 +1447,16 @@ def _get_ml_shap_df(
             _ML_SHAP_CACHE[cache_key] = pd.DataFrame()
         else:
             suffix = "_pre_covid_2018_2019" if experiment_set == 2 else "_2020_2022"
-            csv_path = ML_RESULTS_DIR / f"shap_feature_importance_{shap_model}{suffix}_{clean_scope}.csv"
+            csv_path = _dashboard_data_path(
+                SAMHI_FORECAST_DATA_DIR,
+                f"shap_feature_importance_{shap_model}{suffix}_{clean_scope}.csv",
+            )
             # Preserve compatibility with the legacy LightGBM output.
             if shap_model == "lightgbm" and not csv_path.exists():
-                csv_path = ML_RESULTS_DIR / f"shap_feature_importance{suffix}_{clean_scope}.csv"
+                csv_path = _dashboard_data_path(
+                    SAMHI_FORECAST_DATA_DIR,
+                    f"shap_feature_importance{suffix}_{clean_scope}.csv",
+                )
             _ML_SHAP_CACHE[cache_key] = pd.read_csv(csv_path) if csv_path.exists() else pd.DataFrame()
     return _ML_SHAP_CACHE[cache_key]
 
@@ -1447,7 +1468,10 @@ _ML_PROJ_SUMMARY_CACHE: pd.DataFrame | None = None
 def _get_ml_projections_df(scope: str = "lincolnshire") -> pd.DataFrame:
     clean_scope = "lincolnshire" if scope == "lincolnshire" else "national"
     if clean_scope not in _ML_PROJECTIONS_CACHE:
-        csv_path = ML_RESULTS_DIR / f"forward_projections_2023_2025_{clean_scope}.csv"
+        csv_path = _dashboard_data_path(
+            SAMHI_FORECAST_DATA_DIR,
+            f"forward_projections_2023_2025_{clean_scope}.csv",
+        )
         if csv_path.exists():
             df = pd.read_csv(csv_path)
             df["LSOA21CD"] = df["LSOA21CD"].astype(str).str.strip()
@@ -1468,7 +1492,7 @@ def _get_ml_projections_df(scope: str = "lincolnshire") -> pd.DataFrame:
 def _get_ml_proj_summary_df() -> pd.DataFrame:
     global _ML_PROJ_SUMMARY_CACHE
     if _ML_PROJ_SUMMARY_CACHE is None:
-        csv_path = ML_RESULTS_DIR / "forward_projections_summary.csv"
+        csv_path = _dashboard_data_path(SAMHI_FORECAST_DATA_DIR, "forward_projections_summary.csv")
         if csv_path.exists():
             _ML_PROJ_SUMMARY_CACHE = pd.read_csv(csv_path)
         else:

@@ -1,0 +1,6 @@
+model,method,feature,label,domain,description,importance_abs,importance_pct
+RandomForest,TreeSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.6062205327693613,85.50946483052242
+RandomForest,TreeSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.04672057974013742,6.590096432234885
+RandomForest,TreeSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.03287345965318296,4.636913120098652
+RandomForest,TreeSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.017721729223941024,2.499710088815412
+RandomForest,TreeSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.00541508074502201,0.7638155283286391

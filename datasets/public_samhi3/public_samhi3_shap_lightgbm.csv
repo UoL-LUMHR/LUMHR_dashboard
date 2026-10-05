@@ -1,0 +1,6 @@
+model,method,feature,label,domain,description,importance_abs,importance_pct
+LightGBM,TreeSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.44081842966310764,59.33845001285042
+LightGBM,TreeSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.12598192466870325,16.958392926515543
+LightGBM,TreeSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.07731418575443473,10.407241707611629
+LightGBM,TreeSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.05920593983510802,7.969695604728496
+LightGBM,TreeSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.0395678657763236,5.326219748293908

@@ -1,0 +1,41 @@
+model,method,feature,label,domain,description,importance_abs,importance_pct
+BayesianRidge,LinearSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.43664029723996245,38.35428551272773
+BayesianRidge,LinearSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.2883507094350126,25.32859543055449
+BayesianRidge,LinearSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.2815096985146805,24.72768413653824
+BayesianRidge,LinearSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.11889450667616974,10.443639498638959
+BayesianRidge,LinearSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.013044186503530128,1.1457954215405737
+ElasticNet,LinearSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.22063784372502193,28.959445503937662
+ElasticNet,LinearSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.20407190292721633,26.785111075826574
+ElasticNet,LinearSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.16250113801499072,21.328810920296753
+ElasticNet,LinearSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.15256151757848915,20.024202918781697
+ElasticNet,LinearSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.02211319288772963,2.902429581157313
+Ridge,LinearSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.4294388909228272,38.37109132627416
+Ridge,LinearSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.283951933957183,25.3715856212502
+Ridge,LinearSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.28012376119749477,25.02953190958218
+Ridge,LinearSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.11257570734232727,10.058829879775885
+Ridge,LinearSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.013082698745688766,1.1689612631175688
+RandomForest,TreeSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.6062205327693613,85.50946483052242
+RandomForest,TreeSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.04672057974013742,6.590096432234885
+RandomForest,TreeSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.03287345965318296,4.636913120098652
+RandomForest,TreeSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.017721729223941024,2.499710088815412
+RandomForest,TreeSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.00541508074502201,0.7638155283286391
+ExtraTrees,TreeSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.3759141399205861,49.89787680801054
+ExtraTrees,TreeSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.13566739092144448,18.00814079643969
+ExtraTrees,TreeSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.08932525490646451,11.856804764270109
+ExtraTrees,TreeSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.08546572493452663,11.344500675051053
+ExtraTrees,TreeSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.0669944940233535,8.892676956228605
+LightGBM,TreeSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.44081842966310764,59.33845001285042
+LightGBM,TreeSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.12598192466870325,16.958392926515543
+LightGBM,TreeSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.07731418575443473,10.407241707611629
+LightGBM,TreeSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.05920593983510802,7.969695604728496
+LightGBM,TreeSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.0395678657763236,5.326219748293908
+XGBoost,TreeSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.44248435701006383,59.75818835496018
+XGBoost,TreeSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.12108886476563202,16.353236162399213
+XGBoost,TreeSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.07636045870029193,10.312596595995412
+XGBoost,TreeSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.05542800394340412,7.4856366045819
+XGBoost,TreeSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.04509643385844538,6.090342282063297
+CatBoost,TreeSHAP,public_samhi3_index_lag1,Previous Year Public SAMHI-3 Proxy (t-1),Temporal History,Most recently recorded proxy level used as the baseline.,0.5089456627572203,70.99082836680746
+CatBoost,TreeSHAP,public_samhi3_z_welfare_lag1,DLA/PIP Mental-Health Claims (t-1),Routine Indicators,Lagged standardised DLA/PIP mental-health and learning-difficulty component.,0.07026402759351968,9.800852798762582
+CatBoost,TreeSHAP,public_samhi3_z_antidepressant_lag1,Antidepressant Prescribing (t-1),Routine Indicators,Lagged standardised antidepressant prescribing component.,0.0635808346914266,8.868640511728948
+CatBoost,TreeSHAP,year_centered,Calendar Year Trend,Time Trend,Linear time trend included to capture gradual change.,0.05588815709193894,7.7956191754474755
+CatBoost,TreeSHAP,public_samhi3_z_qof_lag1,QOF Depression (t-1),Routine Indicators,Lagged standardised QOF depression component.,0.01823880490733798,2.544059147253529
