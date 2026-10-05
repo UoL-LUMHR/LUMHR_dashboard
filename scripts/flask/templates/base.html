@@ -17,7 +17,7 @@
       defer
     ></script>
     <script src="https://cdn.jsdelivr.net/npm/chroma-js@2.4.2/chroma.min.js" defer></script>
-    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast'] %}
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast', '/public_samhi3'] %}
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
     {% endif %}
@@ -767,7 +767,7 @@
       }
     </style>
     {% block head_extra %}{% endblock %}
-    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast'] %}
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast', '/public_samhi3'] %}
     <style>
       #lumhr_map_export_controls {
         position: fixed;
@@ -827,9 +827,10 @@
         <a href="/rural_risk_index" class="{% if request.path == '/rural_risk_index' %}active{% endif %}">Rural Risk</a>
         <a href="/samhi" class="{% if request.path == '/samhi' %}active{% endif %}">SAMHI</a>
         <a href="/samhi_forecast" class="{% if request.path == '/samhi_forecast' %}active{% endif %}">SAMHI Forecast</a>
+        <a href="/public_samhi3" class="{% if request.path == '/public_samhi3' %}active{% endif %}">Public SAMHI-3</a>
       </div>
     </nav>
-    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast'] %}
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast', '/public_samhi3'] %}
     <div id="lumhr_map_export_controls" aria-label="Map export controls">
       <button type="button" data-lumhr-export="png">Export PNG</button>
       <button type="button" data-lumhr-export="pdf">Export PDF</button>
@@ -838,7 +839,7 @@
     {% endif %}
     {% block content %}{% endblock %}
     {% block scripts %}{% endblock %}
-    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast'] %}
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast', '/public_samhi3'] %}
     <script>
       (() => {
         const EXPORT_CAPTURE_SCALE = 3;
@@ -1105,4 +1106,3 @@
     {% endif %}
   </body>
 </html>
-

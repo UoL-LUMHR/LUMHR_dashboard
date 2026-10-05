@@ -1,6 +1,6 @@
 """Plot the refreshed public-data SAMHI reconstruction and forecasts.
 
-The script only reads CSV outputs from scripts 07--11; it does not retrain
+The script only reads CSV outputs from scripts 07--13; it does not retrain
 models.  Charts are written to ``results/public_plots`` by default.
 """
 
@@ -139,6 +139,45 @@ def spatial_comparison(results: Path, output: Path) -> None:
     save(fig, output / "06_spatial_bayesian_comparison.png", "Lincolnshire spatial Bayesian pilot")
 
 
+def missingness_sensitivity(results: Path, output: Path) -> None:
+    path = results / "public_missingness/scenario_summary.csv"
+    if not path.exists():
+        return
+    df = pd.read_csv(path)
+    df = df[(df["scope"] == "national") & df["model"].isin(["BayesianRidge", "ElasticNet", "Persistence"])]
+    order = [
+        "all_indicators", "components_only", "remove_qof", "remove_dwp", "remove_antidepressant",
+        "remove_qof_dwp", "remove_qof_antidepressant", "remove_dwp_antidepressant",
+        "missingness_2023_2025",
+    ]
+    labels = {
+        "all_indicators": "All",
+        "components_only": "Components only",
+        "remove_qof": "No QOF",
+        "remove_dwp": "No DWP",
+        "remove_antidepressant": "No antidepressant",
+        "remove_qof_dwp": "No QOF+DWP",
+        "remove_qof_antidepressant": "No QOF+AD",
+        "remove_dwp_antidepressant": "No DWP+AD",
+        "missingness_2023_2025": "2023–25 missingness",
+    }
+    pivot = df.pivot(index="scenario", columns="model", values="mean_rmse").reindex(order).dropna(how="all")
+    fig, ax = plt.subplots(figsize=(12, 6))
+    x = range(len(pivot))
+    width = 0.25
+    for offset, model in enumerate(["BayesianRidge", "ElasticNet", "Persistence"]):
+        if model not in pivot:
+            continue
+        values = pivot[model].to_numpy()
+        ax.bar([value + (offset - 1) * width for value in x], values, width=width, label=model, color=COLOURS.get(model, "#374151"))
+    ax.set_xticks(list(x))
+    ax.set_xticklabels([labels.get(value, value) for value in pivot.index], rotation=25, ha="right")
+    ax.set_ylabel("Mean rolling-origin RMSE")
+    ax.grid(axis="y", alpha=.25)
+    ax.legend()
+    save(fig, output / "07_missingness_scenario_rmse.png", "Public-data indicator-removal sensitivity")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", type=Path, default=Path(__file__).resolve().parent / "results")
@@ -152,6 +191,7 @@ def main() -> None:
     component_correlations(args.results_dir, output)
     coverage(args.results_dir, output)
     spatial_comparison(args.results_dir, output)
+    missingness_sensitivity(args.results_dir, output)
     print(f"Created public-data charts in {output}")
 
 

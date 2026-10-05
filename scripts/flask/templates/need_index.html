@@ -95,6 +95,15 @@
 
     <div class="control">
       <div class="control-header">
+        <label for="public_samhi3_year">Public SAMHI-3 Proxy Year</label>
+        <output id="public_samhi3_year_val">2025</output>
+      </div>
+      <input id="public_samhi3_year" type="range" min="2011" max="2025" step="1" value="2025">
+      <div class="muted" style="font-size:.72rem; margin-top:.2rem;">Optional layer only; excluded from the Need Index calculation.</div>
+    </div>
+
+    <div class="control">
+      <div class="control-header">
         <label for="dla">DWP DLA Rate (%)</label>
         <output id="dla_val">16.7</output>
       </div>
@@ -178,6 +187,7 @@
         "GP_Registration_Rate_Pct": "GP Registration Coverage (%)",
         "DWP_DLA_Rate_Pct": "DWP DLA rate (%)",
         "DWP_PIP_Rate_Pct": "DWP PIP rate (%)",
+        "Public_SAMHI3_Proxy": `Public SAMHI-3 proxy (${document.getElementById("public_samhi3_year")?.value || 2025})`,
       }[currentLayerKey] || "Map Layer");
   }
 
@@ -198,7 +208,7 @@
   }
 
   function getScaleForLayer(layerKey = currentLayerKey) {
-    if (layerKey === "SAMHI_Selected" || layerKey === "Pct_65plus" || layerKey === "GP_Registration_Rate_Pct") {
+    if (layerKey === "SAMHI_Selected" || layerKey === "Public_SAMHI3_Proxy" || layerKey === "Pct_65plus" || layerKey === "GP_Registration_Rate_Pct") {
       return "YlGnBu";
     }
     return "YlOrRd";
@@ -470,6 +480,7 @@
           "GP_Registration_Rate_Pct": "GP Registration Coverage (%)",
           "DWP_DLA_Rate_Pct": "DWP DLA rate (%)",
           "DWP_PIP_Rate_Pct": "DWP PIP rate (%)",
+          "Public_SAMHI3_Proxy": `Public SAMHI-3 proxy (${document.getElementById("public_samhi3_year")?.value || 2025})`,
         }[currentLayerKey] || "Map Layer";
 
     titleEl.textContent = layerLabel;
@@ -494,6 +505,7 @@
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="SMI_Prevalence"> SMI Prevalence (%)</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Antidepressant_Items_Per_Patient"> Antidepressant Items / Patient</label>
         <label id="samhi_radio_label" style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="SAMHI_Selected"> ${samhiLegendLabel}</label>
+        <label id="public_samhi3_radio_label" style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Public_SAMHI3_Proxy"> Public SAMHI-3 proxy (2025)</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="DWP_DLA_Rate_Pct"> DWP DLA rate (%)</label>
         <label style="display:block; margin-bottom:8px;"><input type="radio" name="map_metric" value="DWP_PIP_Rate_Pct"> DWP PIP rate (%)</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Pct_65plus"> Older Adults (65+) %</label>
@@ -583,6 +595,13 @@
         });
       }
     }
+    const publicLabel = document.getElementById("public_samhi3_radio_label");
+    if (publicLabel) {
+      const publicYear = Number(document.getElementById("public_samhi3_year")?.value || 2025);
+      publicLabel.innerHTML = `<input type="radio" name="map_metric" value="Public_SAMHI3_Proxy" ${currentLayerKey === "Public_SAMHI3_Proxy" ? "checked" : ""}> Public SAMHI-3 proxy (${publicYear})`;
+      const publicRadio = publicLabel.querySelector('input[name="map_metric"]');
+      if (publicRadio) publicRadio.addEventListener("change", () => { currentLayerKey = "Public_SAMHI3_Proxy"; applyActiveLayerStyle(); });
+    }
   }
 
   async function updateMap() {
@@ -593,6 +612,7 @@
     const dla = Number(document.getElementById("dla").value);
     const pip = Number(document.getElementById("pip").value);
     const samhiYear = Number(document.getElementById("samhi_year").value);
+    const publicSamhi3Year = Number(document.getElementById("public_samhi3_year").value);
 
     const params = new URLSearchParams({
       dep: dep.toString(),
@@ -602,6 +622,7 @@
       dla: dla.toString(),
       pip: pip.toString(),
       samhi_year: samhiYear.toString(),
+      public_samhi3_year: publicSamhi3Year.toString(),
     });
 
     const resp = await fetch(`/api/need_scores?${params.toString()}`);
@@ -699,6 +720,12 @@
 
     document.getElementById("samhi_year").addEventListener("input", async () => {
       updateWeightText();
+      await updateMap();
+    });
+
+    document.getElementById("public_samhi3_year").addEventListener("input", async () => {
+      document.getElementById("public_samhi3_year_val").textContent = document.getElementById("public_samhi3_year").value;
+      updateSamhiLegendLabel();
       await updateMap();
     });
 

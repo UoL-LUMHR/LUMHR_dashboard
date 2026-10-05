@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block title %}Public SAMHI-3 Proxy | LUMHR{% endblock %}
+{% block body_class %}map-layout{% endblock %}
+
+{% block head_extra %}
+<style>
+  .proxy-warning { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:.55rem; padding:.65rem .75rem; font-size:.78rem; line-height:1.35; }
+  .proxy-metric { background:#f4f8fa; border:1px solid #d2e4ec; border-radius:.55rem; padding:.55rem .65rem; margin-top:.55rem; font-size:.78rem; }
+  .proxy-metric strong { color:#0c7da0; }
+  .proxy-inspector { position:absolute; bottom:24px; left:24px; z-index:500; background:rgba(255,255,255,.96); border:1px solid #c8d9e2; border-radius:.75rem; padding:.85rem 1.1rem; box-shadow:0 4px 18px rgba(15,45,58,.15); max-width:340px; display:none; font-size:.84rem; }
+  .proxy-inspector h4 { margin:0 0 .35rem; color:#0f2d3a; font-size:.95rem; }
+  .proxy-row { display:flex; justify-content:space-between; gap:12px; padding:.15rem 0; }
+  .proxy-row span:first-child { color:#5d717d; }
+  .proxy-row span:last-child { font-weight:700; color:#0f2d3a; }
+  #proxy_legend { margin-bottom:64px; background:rgba(255,255,255,.94); padding:8px 12px; border-radius:8px; border:1px solid #c8d9e2; font-size:11px; line-height:1.3; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="sidebar-backdrop" id="sidebar_backdrop"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h1>Public SAMHI-3</h1>
+      <button class="sidebar-close-btn" id="sidebar_close_btn" type="button" title="Close Controls">&times;</button>
+    </div>
+    <p class="muted" style="font-size:.84rem;">A public data proxy for mental-health need.</p>
+    <div class="proxy-warning"><strong>Not official SAMHI.</strong> This index uses antidepressant prescribing, QOF depression and DLA/PIP only. The safeguarded hospital-attendance component is unavailable.</div>
+
+    <details class="control">
+      <summary><strong>Method summary</strong></summary>
+        <ul style="padding-left:1.1rem; margin:.25rem 0 0;">
+          <li>Each available component is standardised against its 2011-2022 reference mean and standard deviation.</li>
+          <li>The three z-scores are combined with equal weights. Hospital attendances are not imputed, so this is a proxy rather than the official SAMHI.</li>
+          <li>Forecasts use lagged components and the previous proxy value; Bayesian Ridge also reports an approximate 95% prediction interval.</li>
+          <li>Out-of-time model forecasts begin in 2017; 2011–2016 are retained as training history and are not shown as fitted backcasts.</li>
+          <li>Validation is rolling-origin and reports RMSE, MAE and directional accuracy. The displayed model is not a clinical risk score.</li>
+          <li>The SAMHI-3 vs SAMHI map standardises both indices within each year before subtraction; it is available only for the 2011–2022 published-SAMHI overlap.</li>
+        </ul>
+    </details>
+
+    <details class="control">
+      <summary><strong>Data Sources</strong></summary>
+      <ul style="padding-left:1.1rem; margin:.25rem 0 0;">
+        <li><a href="https://openprescribing.net/" target="_blank" rel="noopener">OpenPrescribing / NHS prescribing data</a> antidepressant prescribing.</li>
+        <li><a href="https://digital.nhs.uk/data-and-information/data-tools-and-services/data-services/general-practice-data-for-planning-and-research" target="_blank" rel="noopener">NHS England QOF</a> depression prevalence allocated to LSOAs using the register/population crosswalk.</li>
+        <li><a href="https://stat-xplore.dwp.gov.uk/" target="_blank" rel="noopener">DWP Stat-Xplore</a> DLA and PIP claims for mental-health/learning-difficulty reasons.</li>
+        <li><a href="https://pldr.org/dataset/small-area-mental-health-index-samhi-2noyv" target="_blank" rel="noopener">PLDR SAMHI</a> published SAMHI benchmark for 2011-2022 where available.</li>
+      </ul>
+    </details>
+
+    <div class="control">
+      <label for="scope_select" style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Geographic Scope</label>
+      <select id="scope_select" style="width:100%; padding:.45rem .6rem; border-radius:.5rem; border:1px solid #b8ccd6; background:#fff;">
+        <option value="lincolnshire" selected>Lincolnshire</option>
+        <option value="national">England National</option>
+      </select>
+    </div>
+    <div class="control">
+      <label for="year_select" style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Year</label>
+      <select id="year_select" style="width:100%; padding:.45rem .6rem; border-radius:.5rem; border:1px solid #b8ccd6; background:#fff;"></select>
+    </div>
+    <div class="control">
+      <label for="district_select" style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Local Authority District</label>
+      <select id="district_select" style="width:100%; padding:.45rem .6rem; border-radius:.5rem; border:1px solid #b8ccd6; background:#fff;"><option>All</option></select>
+    </div>
+    <div class="control">
+      <label for="model_select" style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Forecast Model</label>
+      <select id="model_select" style="width:100%; padding:.45rem .6rem; border-radius:.5rem; border:1px solid #b8ccd6; background:#fff;">
+        <option value="pred_bayesianridge" selected>Bayesian Ridge (intervals)</option>
+        <option value="pred_elasticnet">ElasticNet</option>
+        <option value="pred_ridge">Ridge</option>
+        <option value="pred_randomforest">Random Forest</option>
+        <option value="pred_extratrees">Extra Trees</option>
+        <option value="pred_lightgbm">LightGBM</option>
+        <option value="pred_xgboost">XGBoost</option>
+        <option value="pred_catboost">CatBoost</option>
+      </select>
+    </div>
+    <div class="control">
+      <label style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Map Layer</label>
+      <div class="radio-group">
+        <label><input type="radio" name="layer_mode" value="proxy" checked> Observed Public SAMHI-3 proxy</label>
+        <label id="forecast_mode_label"><input id="forecast_mode" type="radio" name="layer_mode" value="forecast"> Model forecast (2017–2025)</label>
+        <label id="forecast_error_label"><input id="forecast_error_mode" type="radio" name="layer_mode" value="error"> Forecast error (2017–2025)</label>
+        <label><input type="radio" name="layer_mode" value="change"> Proxy change from previous year</label>
+        <label id="comparison_error_label"><input id="comparison_error_mode" type="radio" name="layer_mode" value="comparison_error"> SAMHI-3 vs SAMHI (standardised difference; 2011–2022 only)</label>
+      </div>
+    </div>
+    <div class="control">
+      <label style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Map Settings</label>
+      <label style="display:block; font-size:.82rem; margin:.25rem 0; cursor:pointer;"><input id="show_urban" type="checkbox" checked> Show Urban LSOAs</label>
+      <label style="display:block; font-size:.82rem; margin:.25rem 0; cursor:pointer;"><input id="show_rural" type="checkbox" checked> Show Rural LSOAs</label>
+      <label for="layer_opacity" style="display:block; font-size:.82rem; font-weight:600; margin-top:.55rem;">Layer Opacity</label>
+      <input id="layer_opacity" type="range" min="0.1" max="1" step="0.05" value="0.82" style="width:100%;">
+      <div id="layer_opacity_value" class="muted" style="font-size:.75rem; margin-top:.15rem;">Opacity: 0.82</div>
+    </div>
+    <div class="proxy-metric" id="metric_summary">Loading validation summary...</div>
+    <details class="control">
+      <summary style="cursor:pointer; font-weight:700; font-size:.86rem;">Top predictive drivers (<span id="shap_method_label">Bayesian Ridge LinearSHAP</span>)</summary>
+      <div style="margin-top:.45rem; overflow-x:auto;">
+        <div class="muted" style="font-size:.72rem; margin-bottom:.35rem;">Global feature impact from the 2011–2022 training panel; it changes when the model changes, not when the forecast year changes.</div>
+        <table class="shap-table" id="public_shap_table" style="width:100%; border-collapse:collapse; font-size:.75rem;">
+          <thead><tr><th style="text-align:left;">Feature</th><th style="text-align:left;">Domain</th><th style="text-align:right;">Impact %</th></tr></thead>
+          <tbody><tr><td colspan="3" style="text-align:center;">Loading SHAP importances...</td></tr></tbody>
+        </table>
+      </div>
+    </details>
+    <div class="legend" id="status" style="margin-top:.65rem;">Loading Public SAMHI-3 data...</div>
+  </aside>
+  <section class="map-shell">
+    <button class="mobile-sidebar-toggle" id="mobile_sidebar_toggle" type="button">⚙️ Controls</button>
+    <div id="map"></div>
+    <div class="proxy-inspector" id="proxy_inspector">
+      <h4 id="inspector_title">LSOA</h4>
+      <div class="proxy-row"><span>District</span><span id="insp_district">--</span></div>
+      <div class="proxy-row"><span>Public SAMHI-3 proxy</span><span id="insp_proxy">--</span></div>
+      <div class="proxy-row"><span>Selected forecast</span><span id="insp_forecast">--</span></div>
+      <div class="proxy-row"><span>Forecast error</span><span id="insp_error">--</span></div>
+      <div class="proxy-row"><span>Proxy change from previous year</span><span id="insp_change">--</span></div>
+      <div class="proxy-row"><span>SAMHI-3 vs SAMHI difference</span><span id="insp_comparison">--</span></div>
+      <div class="proxy-row"><span>95% interval</span><span id="insp_ci">--</span></div>
+      <div class="proxy-row"><span>Components available</span><span id="insp_components">--</span></div>
+      <div class="proxy-row"><span>Official SAMHI</span><span id="insp_official">--</span></div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const GEOJSON = {
+    lincolnshire: "/datasets/{{ geojson_lincolnshire }}",
+    national: "/datasets/{{ geojson_england }}"
+  };
+  const state = { scope: "lincolnshire", year: 2023, district: "All", model: "pred_bayesianridge", mode: "proxy", data: {}, metrics: [], geo: null, layer: null, range: [0, 1] };
+  let showUrban = true;
+  let showRural = true;
+  let fillOpacity = 0.82;
+  const map = L.map("map", { zoomControl: false, preferCanvas: true }).fitBounds([[52.64022, -0.82065], [53.61637, 0.35797]], { animate:false });
+  L.control.zoom({ position:"topright" }).addTo(map);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:18, attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
+  const legend = L.control({position:"bottomright"});
+  legend.onAdd = () => { const d=L.DomUtil.create("div","info legend"); d.id="proxy_legend"; d.innerHTML="Loading..."; return d; };
+  legend.addTo(map);
+
+  const yearSelect = document.getElementById("year_select");
+  for (let year=2011; year<=2025; year++) { const o=document.createElement("option"); o.value=year; o.textContent=year + (year>=2023 ? " (forecast available)" : ""); if(year===2023)o.selected=true; yearSelect.appendChild(o); }
+  const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+  const num = value => {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const fmt = value => num(value) === null ? "N/A" : num(value).toFixed(3);
+  const fmtCount = value => num(value) === null ? "N/A" : String(Math.round(num(value)));
+  const forecastError = p => { const forecast=num(p[state.model]), proxy=num(p.proxy); return forecast===null||proxy===null ? null : forecast-proxy; };
+  const changeDescription = value => { const change=num(value); if(change===null) return "N/A"; if(Math.abs(change)<0.05) return "Stable"; return change>0 ? "Worsening" : "Improving"; };
+  function selectedValue(p) {
+    if (state.mode === "proxy") return num(p.proxy);
+    if (state.mode === "forecast") return num(p[state.model]);
+    if (state.mode === "error") { const a=num(p[state.model]), b=num(p.proxy); return a===null||b===null ? null : a-b; }
+    if (state.mode === "comparison_error") return num(p.proxy_official_std_error);
+    return num(p.proxy_change);
+  }
+  function title() {
+    if (state.mode === "proxy") return "Public SAMHI-3 proxy";
+    if (state.mode === "forecast") return `${document.querySelector('#model_select option:checked').textContent} forecast`;
+    if (state.mode === "error") return "Forecast error (forecast − proxy)";
+    if (state.mode === "comparison_error") return "SAMHI-3 vs SAMHI difference";
+    return "Public SAMHI-3 change";
+  }
+  function paletteForMode() {
+    return (state.mode === "error" || state.mode === "change" || state.mode === "comparison_error")
+      ? ["#2b83ba", "#abdda4", "#ffffbf", "#fdae61", "#d7191c"]
+      // The continuous SAMHI index maps use the ColorBrewer YlGnBu scale.
+      : ["#ffffd9", "#edf8b1", "#c7e9b4", "#7fcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#253494", "#081d58"];
+  }
+  function updateLegend(values) {
+    const valid=values.filter(Number.isFinite);
+    const palette=paletteForMode(); const gradient=`linear-gradient(to right,${palette.join(",")})`;
+    if(!valid.length){
+      document.getElementById("proxy_legend").innerHTML=`<div style="font-weight:700;margin-bottom:4px;">${title()}</div><div style="width:170px;height:12px;background:${gradient};border-radius:3px;opacity:.45;"></div><div style="font-size:10px;color:#445763;margin-top:3px;">N/A for selected year</div>`;
+      return;
+    }
+    const min=state.range[0], max=state.range[1];
+    document.getElementById("proxy_legend").innerHTML=`<div style="font-weight:700;margin-bottom:4px;">${title()}</div><div style="width:170px;height:12px;background:${gradient};border-radius:3px;"></div><div style="display:flex;justify-content:space-between;font-size:10px;color:#445763;"><span>${min.toFixed(2)}</span><span>${((min+max)/2).toFixed(2)}</span><span>${max.toFixed(2)}</span></div>`;
+  }
+  function hexToRgb(hex) {
+    const value=hex.replace("#",""); return [parseInt(value.slice(0,2),16),parseInt(value.slice(2,4),16),parseInt(value.slice(4,6),16)];
+  }
+  function colourFor(value) {
+    // Match the SAMHI forecast palettes while remaining usable without chroma-js.
+    const stops=paletteForMode().map(hexToRgb); const t=Math.max(0,Math.min(1,Number(value)||0)); const scaled=t*(stops.length-1); const i=Math.min(stops.length-2,Math.floor(scaled)); const f=scaled-i;
+    const a=stops[i], b=stops[i+1]; const rgb=a.map((channel,index)=>Math.round(channel+(b[index]-channel)*f));
+    return `rgb(${rgb.join(",")})`;
+  }
+  function style(feature) {
+    const code=feature.properties.LSOA21CD||feature.properties.CODE||""; const detail=state.data[code]||{}; const value=selectedValue(detail);
+    const classification=String(detail.urban_rural||"").toLowerCase();
+    const isRural=classification === "rural" || classification.includes("rural") && !classification.includes("urban");
+    const isUrban=classification === "urban" || classification.includes("urban");
+    if((isUrban && !showUrban) || (isRural && !showRural)) return {fillColor:"#e2e8f0",weight:.35,color:"#cbd5e1",fillOpacity:.22};
+    if(value===null) return {fillColor:"#d9d9d9",weight:.5,color:"#fff",fillOpacity:.25};
+    const lo=state.range[0], hi=state.range[1]; const t=(value-lo)/((hi-lo)||1);
+    return {fillColor:colourFor(t),weight:.7,color:"#fff",fillOpacity};
+  }
+  function tooltip(feature, layer) {
+    const code=feature.properties.LSOA21CD||feature.properties.CODE||""; const p=state.data[code]||{}; const name=p.name||feature.properties.LSOA21NM||code;
+    layer.bindTooltip(`<strong>${esc(name)}</strong><br><span style="font-size:.74rem;">${esc(code)}</span><hr style="margin:4px 0;border:0;border-top:1px solid #c8d9e2;"><b>${esc(title())}:</b> ${fmt(selectedValue(p))}<br><b>Components available:</b> ${fmtCount(p.n_components)} / 3<br><b>Forecast error:</b> ${fmt(forecastError(p))}<br><b>Proxy change from previous year:</b> ${fmt(p.proxy_change)} (${esc(changeDescription(p.proxy_change))})<br><b>SAMHI-3 vs SAMHI difference:</b> ${fmt(p.proxy_official_std_error)}<br><b>Official SAMHI:</b> ${fmt(p.official_samhi)}`, {sticky:true,className:"lsoa-tooltip"});
+    layer.on("click", () => { document.getElementById("proxy_inspector").style.display="block"; document.getElementById("inspector_title").textContent=`${name} (${code})`; document.getElementById("insp_district").textContent=p.district||"N/A"; document.getElementById("insp_proxy").textContent=fmt(p.proxy); document.getElementById("insp_forecast").textContent=fmt(p[state.model]); document.getElementById("insp_error").textContent=fmt(forecastError(p)); document.getElementById("insp_change").textContent=`${fmt(p.proxy_change)} (${changeDescription(p.proxy_change)})`; document.getElementById("insp_comparison").textContent=fmt(p.proxy_official_std_error); const lo=num(p.ci_lower_bayesianridge), hi=num(p.ci_upper_bayesianridge); document.getElementById("insp_ci").textContent=lo===null||hi===null?"N/A":`[${lo.toFixed(2)}, ${hi.toFixed(2)}]`; document.getElementById("insp_components").textContent=`${fmtCount(p.n_components)} / 3`; document.getElementById("insp_official").textContent=fmt(p.official_samhi); });
+  }
+  function render() {
+    const features=(state.geo||{}).features||[]; const visible=state.district==="All"?features:features.filter(f=>{const c=f.properties.LSOA21CD||f.properties.CODE||"";return state.data[c]?.district===state.district;});
+    if(state.layer) map.removeLayer(state.layer); const values=Object.values(state.data).map(selectedValue).filter(v=>v!==null); if(values.length){ const min=Math.min(...values), max=Math.max(...values); if(state.mode==="error"||state.mode==="change"||state.mode==="comparison_error"){ const limit=Math.max(Math.abs(min),Math.abs(max),0.15); state.range=[-limit,limit]; } else { state.range=[min,max]; } } else { state.range=[0,1]; } updateLegend(values);
+    state.layer=L.geoJSON({type:"FeatureCollection",features:visible},{style,onEachFeature:tooltip}).addTo(map);
+  }
+  function selectedModelName() {
+    const key=state.model.replace(/^pred_/,"");
+    return {bayesianridge:"BayesianRidge",elasticnet:"ElasticNet",ridge:"Ridge",randomforest:"RandomForest",extratrees:"ExtraTrees",lightgbm:"LightGBM",xgboost:"XGBoost",catboost:"CatBoost"}[key] || "BayesianRidge";
+  }
+  function updateMetricSummary() {
+    const metric=state.metrics.find(item=>item.model===selectedModelName());
+    document.getElementById("metric_summary").innerHTML=metric
+      ? `Rolling-origin RMSE: <strong>${Number(metric.mean_rmse).toFixed(3)}</strong>; MAE: <strong>${Number(metric.mean_mae).toFixed(3)}</strong> (${esc(metric.model)}; Public SAMHI-3 history + components)`
+      : "No validation summary available for this model.";
+  }
+  function updateComparisonAvailability() {
+    const control=document.getElementById("comparison_error_mode");
+    const label=document.getElementById("comparison_error_label");
+    const unavailable=state.year>2022;
+    control.disabled=unavailable;
+    label.style.opacity=unavailable ? "0.45" : "1";
+    label.title=unavailable ? "Published SAMHI is unavailable after 2022" : "Compare standardised Public SAMHI-3 and published SAMHI";
+    if(unavailable && state.mode==="comparison_error"){
+      state.mode="proxy";
+      document.querySelector("input[name='layer_mode'][value='proxy']").checked=true;
+    }
+    const forecastUnavailable=state.year<2017;
+    const forecastControl=document.getElementById("forecast_mode");
+    const forecastErrorControl=document.getElementById("forecast_error_mode");
+    const forecastLabel=document.getElementById("forecast_mode_label");
+    const forecastErrorLabel=document.getElementById("forecast_error_label");
+    forecastControl.disabled=forecastUnavailable;
+    forecastErrorControl.disabled=forecastUnavailable;
+    forecastLabel.style.opacity=forecastUnavailable ? "0.45" : "1";
+    forecastErrorLabel.style.opacity=forecastUnavailable ? "0.45" : "1";
+    const forecastTitle=forecastUnavailable ? "Model forecasts start in 2017" : "Model forecast";
+    forecastLabel.title=forecastTitle;
+    forecastErrorLabel.title=forecastUnavailable ? "Forecast errors start in 2017" : "Forecast error against the proxy";
+    if(forecastUnavailable && (state.mode==="forecast" || state.mode==="error")){
+      state.mode="proxy";
+      document.querySelector("input[name='layer_mode'][value='proxy']").checked=true;
+    }
+  }
+  async function loadShap() {
+    const tbody=document.querySelector("#public_shap_table tbody");
+    try {
+      const response=await fetch(`/api/public_samhi3/shap?model=${encodeURIComponent(selectedModelName())}`); const payload=await response.json();
+      if(!response.ok) throw new Error(payload.error||"SHAP output unavailable");
+      document.getElementById("shap_method_label").textContent=`${payload.model} ${payload.method}`;
+      const features=(payload.features||[]).slice(0,8);
+      if(!features.length){ tbody.innerHTML="<tr><td colspan=\"3\" style=\"text-align:center;\">No SHAP data available</td></tr>"; return; }
+      tbody.innerHTML=features.map(feature=>`<tr><td style="padding:.35rem .2rem; font-weight:700;">${esc(feature.label||feature.feature)}</td><td style="padding:.35rem .2rem; color:#506a78;">${esc(feature.domain||"Model feature")}</td><td style="padding:.35rem .2rem; text-align:right; font-weight:800;">${Number(feature.importance_pct).toFixed(1)}%</td></tr>`).join("");
+    } catch(error) {
+      document.getElementById("shap_method_label").textContent="Unavailable";
+      tbody.innerHTML=`<tr><td colspan="3" style="text-align:center;">${esc(error?.message||"SHAP output unavailable")}</td></tr>`;
+    }
+  }
+  async function load() {
+    const status=document.getElementById("status");
+    try {
+      status.textContent="Loading Public SAMHI-3 data...";
+    const response=await fetch(`/api/public_samhi3?scope=${state.scope}&year=${state.year}&district=${encodeURIComponent(state.district)}`); const payload=await response.json(); if(!response.ok){document.getElementById("status").textContent=payload.error||"Unable to load data";return;}
+    state.data=payload.predictions||{}; const district=document.getElementById("district_select"); const existing=state.district; district.innerHTML=(payload.districts||["All"]).map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join(""); state.district=(payload.districts||[]).includes(existing)?existing:"All"; district.value=state.district;
+    if(!Object.keys(state.data).length) throw new Error("The API returned no LSOA rows for this selection.");
+    const metric=payload.metrics?.find(m=>m.model==="ExtraTrees")||payload.metrics?.find(m=>m.model==="BayesianRidge"); document.getElementById("metric_summary").innerHTML=metric?`Rolling-origin RMSE: <strong>${Number(metric.mean_rmse).toFixed(3)}</strong> (${esc(metric.model)}; Public SAMHI-3 history + components)`:`No validation summary available.`;
+    state.metrics=payload.metrics||[]; updateMetricSummary();
+    document.getElementById("status").textContent=`Loaded ${Object.keys(state.data).length.toLocaleString()} LSOAs. ${payload.meta?.warning||""}`;
+    if(!state.geo || state.geo._scope!==state.scope){ const geoResponse=await fetch(GEOJSON[state.scope]); if(!geoResponse.ok) throw new Error(`Boundary request failed (${geoResponse.status})`); const g=await geoResponse.json(); if(!Array.isArray(g.features)) throw new Error("Boundary response contains no GeoJSON features"); g._scope=state.scope; state.geo=g; if(state.scope==="national")map.setView([52.75,-1.65],6); else map.fitBounds([[52.64022,-0.82065],[53.61637,0.35797]],{animate:false}); }
+    render();
+    setTimeout(()=>map.invalidateSize(),50);
+    } catch(error) {
+      console.error("Public SAMHI-3 map load failed", error);
+      status.textContent=`Map error: ${error?.message||error}`;
+    }
+  }
+  document.getElementById("scope_select").addEventListener("change",e=>{state.scope=e.target.value;state.district="All";load();});
+  yearSelect.addEventListener("change",e=>{state.year=Number(e.target.value);updateComparisonAvailability();load();});
+  document.getElementById("district_select").addEventListener("change",e=>{state.district=e.target.value;load();});
+  document.getElementById("model_select").addEventListener("change",e=>{state.model=e.target.value;render();updateMetricSummary();loadShap();});
+  document.querySelectorAll("input[name='layer_mode']").forEach(r=>r.addEventListener("change",e=>{state.mode=e.target.value;render();}));
+  document.getElementById("show_urban").addEventListener("change",e=>{showUrban=e.target.checked;if(state.layer)state.layer.setStyle(style);});
+  document.getElementById("show_rural").addEventListener("change",e=>{showRural=e.target.checked;if(state.layer)state.layer.setStyle(style);});
+  document.getElementById("layer_opacity").addEventListener("input",e=>{fillOpacity=Number(e.target.value);document.getElementById("layer_opacity_value").textContent=`Opacity: ${fillOpacity.toFixed(2)}`;if(state.layer)state.layer.setStyle(style);});
+  const sidebar=document.getElementById("sidebar"), backdrop=document.getElementById("sidebar_backdrop"); document.getElementById("mobile_sidebar_toggle").onclick=()=>{sidebar.classList.add("open");backdrop.classList.add("active")}; document.getElementById("sidebar_close_btn").onclick=()=>{sidebar.classList.remove("open");backdrop.classList.remove("active")}; backdrop.onclick=()=>{sidebar.classList.remove("open");backdrop.classList.remove("active")};
+  window.addEventListener("error", event => { const status=document.getElementById("status"); if(status && event?.message) status.textContent=`Map error: ${event.message}`; });
+  window.addEventListener("unhandledrejection", event => { const status=document.getElementById("status"); if(status) status.textContent=`Map error: ${event?.reason?.message||event?.reason||"Unhandled browser error"}`; });
+  updateComparisonAvailability();
+  load();
+  loadShap();
+});
+</script>
+{% endblock %}

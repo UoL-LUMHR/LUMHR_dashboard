@@ -319,6 +319,27 @@ def _num_or_none(value: object) -> float | None:
     return float(value)
 
 
+def _json_safe(value: object) -> object:
+    """Convert pandas/numpy missing values to JSON ``null`` recursively."""
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    # pandas/numpy scalar values expose item(), which gives Flask a native type.
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return _json_safe(item())
+        except (TypeError, ValueError):
+            pass
+    return value
+
+
 def _get_lsoa_name_column(df: pd.DataFrame) -> str | None:
     candidates = ["LSOA21NM", "LSOA21NM_x", "LSOA21NM_y", "LSOA_NAME", "NAME"]
     for candidate in candidates:
@@ -463,12 +484,15 @@ def need_scores_api():
         dla_weight = _parse_float_arg("dla", 16.7)
         pip_weight = _parse_float_arg("pip", 16.7)
         samhi_year = _parse_int_arg("samhi_year", max(SAMHI_YEARS))
+        public_samhi3_year = _parse_int_arg("public_samhi3_year", 2025)
         dwp_year = _parse_int_arg("dwp_year", max(DWP_AVAILABLE_YEARS))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
     if samhi_year not in SAMHI_YEARS:
         return jsonify({"error": f"samhi_year must be one of {SAMHI_YEARS}"}), 400
+    if public_samhi3_year < 2011 or public_samhi3_year > 2025:
+        return jsonify({"error": "public_samhi3_year must be between 2011 and 2025"}), 400
     if dwp_year not in DWP_AVAILABLE_YEARS:
         return jsonify({"error": f"dwp_year must be one of {DWP_AVAILABLE_YEARS}"}), 400
 
@@ -477,6 +501,13 @@ def need_scores_api():
         return jsonify({"error": f"Missing SAMHI column: {samhi_index_col}"}), 400
 
     scored = _attach_public_dwp_layer(LSOA_METRICS, dwp_year)
+    public_samhi3 = _get_public_samhi3_df("lincolnshire")
+    if {"year", "LSOA21CD", "public_samhi3_proxy", "public_samhi3_n_components"}.issubset(public_samhi3.columns):
+        public_samhi3 = public_samhi3[public_samhi3["year"].eq(public_samhi3_year)][["LSOA21CD", "public_samhi3_proxy", "public_samhi3_n_components"]].copy()
+    else:
+        public_samhi3 = pd.DataFrame(columns=["LSOA21CD", "public_samhi3_proxy", "public_samhi3_n_components"])
+    public_samhi3 = public_samhi3.rename(columns={"LSOA21CD": "LSOA_CODE", "public_samhi3_proxy": "Public_SAMHI3_Proxy", "public_samhi3_n_components": "Public_SAMHI3_Components"})
+    scored = scored.merge(public_samhi3, on="LSOA_CODE", how="left")
     scored = apply_need_index(
         scored,
         dep,
@@ -496,6 +527,7 @@ def need_scores_api():
         "SMI_Prevalence": _scores_to_dict(scored, "SMI_Prevalence"),
         "Antidepressant_Items_Per_Patient": _scores_to_dict(scored, "Antidepressant_Items_Per_Patient"),
         "SAMHI_Selected": _scores_to_dict(scored, "SAMHI_Selected"),
+        "Public_SAMHI3_Proxy": _scores_to_dict(scored, "Public_SAMHI3_Proxy"),
         "Pct_65plus": _scores_to_dict(scored, "Pct_65plus"),
         "GP_Registration_Rate_Pct": _scores_to_dict(scored, "GP_Registration_Rate_Pct"),
         "DWP_DLA_Rate_Pct": _scores_to_dict(scored, "dwp_dla_rate_pct"),
@@ -511,6 +543,8 @@ def need_scores_api():
         "SMI_Prevalence_Pct",
         "Antidepressant_Items_Per_Patient",
         "SAMHI_Selected",
+        "Public_SAMHI3_Proxy",
+        "Public_SAMHI3_Components",
         "RUC21NM",
         "Urban_rural_flag",
         "ONS_Pop_Total_2024",
@@ -548,6 +582,8 @@ def need_scores_api():
             "smi_prevalence_pct": _num_or_none(row.get("SMI_Prevalence_Pct")),
             "antidepressant_items_per_patient": _num_or_none(row.get("Antidepressant_Items_Per_Patient")),
             "samhi_selected": _num_or_none(row.get("SAMHI_Selected")),
+            "public_samhi3_proxy": _num_or_none(row.get("Public_SAMHI3_Proxy")),
+            "public_samhi3_components": _num_or_none(row.get("Public_SAMHI3_Components")),
             "ruc21nm": ruc_text,
             "urban_rural_flag": flag_text,
             "is_rural": "rural" in ruc_text.lower(),
@@ -577,6 +613,8 @@ def need_scores_api():
             "meta": {
                 "samhi_year": samhi_year,
                 "samhi_label": f"SAMHI Index ({samhi_year})",
+                "public_samhi3_year": public_samhi3_year,
+                "public_samhi3_label": f"Public SAMHI-3 proxy ({public_samhi3_year})",
                 "dwp_year": dwp_year,
                 "dwp_label": f"DWP DLA and PIP rates ({dwp_year})",
                 "dwp_component_labels": {"dla": f"DLA rate ({dwp_year})", "pip": f"PIP rate ({dwp_year})"},
@@ -1236,6 +1274,9 @@ def rural_risk_scores_api():
 _ML_PREDICTIONS_CACHE: dict[tuple[str, int], pd.DataFrame] = {}
 _ML_METRICS_CACHE: dict[int, pd.DataFrame] = {}
 _ML_SHAP_CACHE: dict[tuple[str, int, str], pd.DataFrame] = {}
+_PUBLIC_SAMHI3_CACHE: dict[str, pd.DataFrame] = {}
+_PUBLIC_SAMHI3_METRICS_CACHE: pd.DataFrame | None = None
+_PUBLIC_SAMHI3_SHAP_CACHE: dict[str, pd.DataFrame] = {}
 
 # Model-specific explanation files. Baselines do not have learned feature
 # drivers, so the page reports their explanation as not applicable.
@@ -1261,6 +1302,56 @@ LINCOLNSHIRE_LADS_SET = {
     "South Kesteven",
     "West Lindsey",
 }
+
+
+def _get_public_samhi3_df(scope: str = "lincolnshire") -> pd.DataFrame:
+    """Load dashboard-ready Public SAMHI-3 rows expanded to 2021 LSOAs."""
+    clean_scope = "lincolnshire" if scope == "lincolnshire" else "national"
+    if clean_scope in _PUBLIC_SAMHI3_CACHE:
+        return _PUBLIC_SAMHI3_CACHE[clean_scope]
+    path = ML_RESULTS_DIR / "public_samhi3_web" / "public_samhi3_web_predictions.csv"
+    lookup_path = DATASETS_DIR / "lincolnshire_lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+    if not path.exists() or not lookup_path.exists():
+        _PUBLIC_SAMHI3_CACHE[clean_scope] = pd.DataFrame()
+        return _PUBLIC_SAMHI3_CACHE[clean_scope]
+    df = pd.read_csv(path, low_memory=False)
+    df["lsoa11"] = df["lsoa11"].astype(str).str.strip()
+    df["year"] = pd.to_numeric(df["year"], errors="coerce")
+    lookup = pd.read_csv(lookup_path, usecols=["LSOA11CD", "LSOA21CD", "LSOA21NM", "LAD22NM"], dtype=str)
+    lookup = lookup.rename(columns={"LSOA11CD": "lsoa11", "LSOA21CD": "LSOA21CD", "LSOA21NM": "LSOA21NM", "LAD22NM": "LAD22NM"})
+    for column in ["lsoa11", "LSOA21CD", "LSOA21NM", "LAD22NM"]:
+        lookup[column] = lookup[column].astype(str).str.strip()
+    lookup = lookup.drop_duplicates("LSOA21CD")
+    if clean_scope == "lincolnshire":
+        lookup = lookup[lookup["LAD22NM"].isin(LINCOLNSHIRE_LADS_SET)]
+    expanded = lookup.merge(df, on="lsoa11", how="inner")
+    expanded = expanded.drop_duplicates(["LSOA21CD", "year"], keep="last")
+    rural_path = DATASETS_DIR / "rural_urban_classification_2021_lsoa" / "Rural_Urban_Classification_(2021)_of_LSOAs_in_EW.csv"
+    if rural_path.exists():
+        rural = pd.read_csv(rural_path, usecols=["LSOA21CD", "RUC21NM", "Urban_rural_flag"], dtype=str)
+        rural["LSOA21CD"] = rural["LSOA21CD"].astype(str).str.strip()
+        rural = rural.drop_duplicates("LSOA21CD")
+        expanded = expanded.merge(rural, on="LSOA21CD", how="left")
+    _PUBLIC_SAMHI3_CACHE[clean_scope] = expanded
+    return expanded
+
+
+def _get_public_samhi3_metrics() -> pd.DataFrame:
+    global _PUBLIC_SAMHI3_METRICS_CACHE
+    if _PUBLIC_SAMHI3_METRICS_CACHE is None:
+        path = ML_RESULTS_DIR / "public_target_tournament" / "model_summary.csv"
+        _PUBLIC_SAMHI3_METRICS_CACHE = pd.read_csv(path) if path.exists() else pd.DataFrame()
+    return _PUBLIC_SAMHI3_METRICS_CACHE
+
+
+def _get_public_samhi3_shap(model: str = "BayesianRidge") -> pd.DataFrame:
+    """Load model-specific global SHAP impacts for the Public SAMHI-3 page."""
+    allowed = {"BayesianRidge", "ElasticNet", "Ridge", "RandomForest", "ExtraTrees", "LightGBM", "XGBoost", "CatBoost"}
+    clean_model = model if model in allowed else "BayesianRidge"
+    if clean_model not in _PUBLIC_SAMHI3_SHAP_CACHE:
+        path = ML_RESULTS_DIR / "public_samhi3_shap" / f"public_samhi3_shap_{clean_model.lower()}.csv"
+        _PUBLIC_SAMHI3_SHAP_CACHE[clean_model] = pd.read_csv(path) if path.exists() else pd.DataFrame()
+    return _PUBLIC_SAMHI3_SHAP_CACHE[clean_model]
 
 
 def _get_ml_predictions_df(scope: str = "lincolnshire", experiment_set: int = 1) -> pd.DataFrame:
@@ -1755,6 +1846,134 @@ def samhi_forecast_page() -> str:
         projection_years=[2023, 2024, 2025],
         default_year=2023,
     )
+
+
+@app.get("/public_samhi3")
+def public_samhi3_page() -> str:
+    return render_template(
+        "public_samhi3.html",
+        geojson_lincolnshire=GEOJSON_REL_PATH,
+        geojson_england=ENGLAND_GEOJSON_REL_PATH,
+    )
+
+
+@app.get("/api/public_samhi3")
+def public_samhi3_api():
+    scope = request.args.get("scope", "lincolnshire").strip().lower()
+    scope = "lincolnshire" if scope == "lincolnshire" else "national"
+    try:
+        year = int(request.args.get("year", 2023))
+    except (TypeError, ValueError):
+        year = 2023
+    if year < 2011 or year > 2025:
+        return jsonify({"error": "Public SAMHI-3 year must be between 2011 and 2025."}), 400
+    district = request.args.get("district", "All").strip()
+    df = _get_public_samhi3_df(scope)
+    if df.empty:
+        return jsonify({"error": "Public SAMHI-3 dashboard data are unavailable. Run the web prediction export first."}), 404
+    df_year = df[df["year"].eq(year)].copy()
+    # Public SAMHI-3 is a z-score proxy while published SAMHI is on its own
+    # index scale.  Compare them only after within-year standardisation.
+    proxy_values = pd.to_numeric(df_year["public_samhi3_proxy"], errors="coerce")
+    official_values = pd.to_numeric(df_year["samhi_index"], errors="coerce")
+    proxy_std = proxy_values.std(ddof=0)
+    official_std = official_values.std(ddof=0)
+    if proxy_std and official_std and pd.notna(proxy_std) and pd.notna(official_std):
+        df_year["proxy_official_std_error"] = (
+            (proxy_values - proxy_values.mean()) / proxy_std
+            - (official_values - official_values.mean()) / official_std
+        )
+    else:
+        df_year["proxy_official_std_error"] = float("nan")
+    df_year["proxy_official_raw_difference"] = proxy_values - official_values
+    if district and district != "All":
+        df_year = df_year[df_year["LAD22NM"].eq(district)]
+    districts = ["All", *sorted(df["LAD22NM"].dropna().astype(str).unique().tolist())]
+    model_names = ["bayesianridge", "elasticnet", "ridge", "randomforest", "extratrees", "lightgbm", "xgboost", "catboost"]
+    prediction_columns = [
+        *(f"pred_{name}" for name in model_names),
+        *(bound for name in model_names for bound in (f"ci_lower_{name}", f"ci_upper_{name}")),
+    ]
+    records = {}
+    for _, row in df_year.iterrows():
+        code = str(row.get("LSOA21CD", "")).strip()
+        if not code:
+            continue
+        item = {
+            "code": code,
+            "name": str(row.get("LSOA21NM", "") or ""),
+            "district": str(row.get("LAD22NM", "") or ""),
+            "ruc21nm": str(row.get("RUC21NM", "") or ""),
+            "urban_rural": str(row.get("Urban_rural_flag", "") or ""),
+            "year": year,
+            "proxy": _num_or_none(row.get("public_samhi3_proxy")),
+            "proxy_2plus": _num_or_none(row.get("public_samhi3_proxy_2plus")),
+            "n_components": _num_or_none(row.get("public_samhi3_n_components")),
+            "official_samhi": _num_or_none(row.get("samhi_index")),
+            "proxy_official_std_error": _num_or_none(row.get("proxy_official_std_error")),
+            "proxy_official_raw_difference": _num_or_none(row.get("proxy_official_raw_difference")),
+            "proxy_lag1": _num_or_none(row.get("public_samhi3_proxy_lag1")),
+            "proxy_change": _num_or_none(row.get("proxy_change")),
+        }
+        for column in prediction_columns:
+            item[column] = _num_or_none(row.get(column))
+        records[code] = item
+    metrics = _get_public_samhi3_metrics()
+    metric_records = []
+    if not metrics.empty:
+        metric_records = [
+            _json_safe(record)
+            for record in metrics[metrics["target"].eq("PublicSAMHI3_HistoryPlusComponents")].to_dict(orient="records")
+        ]
+    return jsonify({
+        "scope": scope,
+        "year": year,
+        "district": district,
+        "total_lsoas": len(records),
+        "districts": districts,
+        "predictions": records,
+        "metrics": metric_records,
+        "meta": {
+            "label": "Public SAMHI-3 proxy",
+            "warning": "This is a public-data proxy built from antidepressant prescribing, QOF depression and DLA/PIP. It excludes the hospital-attendance component and is not official SAMHI.",
+            "source": "Public SAMHI-3 component reconstruction",
+            "method": "Equal-weight mean of components standardised against 2011–2022 reference statistics; forecasts use lagged components and the previous proxy value.",
+            "data_sources": {
+                "antidepressants": "OpenPrescribing / NHS prescribing data",
+                "qof_depression": "NHS England Quality and Outcomes Framework (practice data allocated to LSOAs)",
+                "dla_pip": "DWP Stat-Xplore DLA and PIP claims",
+                "benchmark": "PLDR published SAMHI (2011–2022)",
+            },
+            "hospital_component": "Unavailable in public data; not imputed",
+        },
+    })
+
+
+@app.get("/api/public_samhi3/shap")
+def public_samhi3_shap_api():
+    model = request.args.get("model", "BayesianRidge").strip()
+    allowed = {"BayesianRidge", "ElasticNet", "Ridge", "RandomForest", "ExtraTrees", "LightGBM", "XGBoost", "CatBoost"}
+    if model not in allowed:
+        model = "BayesianRidge"
+    shap_df = _get_public_samhi3_shap(model)
+    if shap_df.empty:
+        return jsonify({"model": model, "method": "Unavailable", "features": [], "error": "SHAP output has not been generated yet."}), 404
+    features = [_json_safe(record) for record in shap_df.to_dict(orient="records")]
+    domains = (
+        shap_df.groupby("domain", as_index=False)["importance_pct"]
+        .sum()
+        .sort_values("importance_pct", ascending=False)
+    )
+    return jsonify({
+        "model": model,
+        "method": str(shap_df["method"].iloc[0]),
+        "features": features,
+        "domain_summary": [_json_safe(record) for record in domains.to_dict(orient="records")],
+        "meta": {
+            "target": "Public SAMHI-3 proxy",
+            "note": "Global mean absolute SHAP impact from models trained on the 2011–2022 panel; impacts are descriptive, not causal.",
+        },
+    })
 
 
 @app.get("/api/samhi_ml/predictions")

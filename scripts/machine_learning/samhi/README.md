@@ -232,10 +232,10 @@ the spatial hyperparameters and check sensitivity to the boundary definition.
 
 ### 8. Newly added SAMHI component data
 
-The component panel and public-data experiments were regenerated on **2 October
-2026** after the corrected DLA Stat-Xplore export was installed in both local
-source locations. The old files in the five public-data result directories
-were removed before this run.
+The component panel and public-data experiments were regenerated on **5 October
+2026** after the corrected DLA Stat-Xplore export and the supplementary QOF
+2023--24 register extract were installed. The old files in the five public-data
+result directories were removed before this run.
 
 The repository now contains the three non-hospital SAMHI components in a form
 that can be audited at LSOA level.  The normalisation script is
@@ -255,7 +255,13 @@ working-age population counts.
 | QOF depression | `scripts/utils/source_data/pldr_qof_indicators_depression_prevalence_QOF_4_12/QOF_4_12_Depression_LSOA_2011_2022.csv` | LSOA estimates 2011--2022; 2018 and 2019 have small gaps retained as missing |
 | DLA/PIP | `scripts/utils/source_data/pldr_welfare_indicators_claimants_DLA_PIP_for_mental_health_learning_difficulties_W_5_05/W_5_05_MH_DLA_PIP_LSOA11.csv` | Annual August snapshots 2010--2022; disclosure-adjusted PLDR values |
 | Raw DWP supplements | `scripts/utils/source_data/DWP_DLA_PIP_data/` | DLA monthly/quarterly extracts cover April 2013--March 2026 (earlier `to_may_2018` plus later `from_may_2018`); the historical PIP extract covers April 2013--December 2018 and the current PIP series starts January 2019 and continues to July 2026. The loader ignores the historical PIP file only if it is byte-identical to the DLA export; the corrected repository files are distinct and both series are included. Upstream: [DWP Stat-Xplore](https://stat-xplore.dwp.gov.uk/) |
-| Raw QOF supplements | `scripts/utils/source_data/quality_outcomes_framework/` | Public practice workbooks through 2024--25; the current parser reconstructs 2021--22, 2022--23 and 2024--25, while 2023--24 publishes no depression prevalence field |
+| Raw QOF supplements | `scripts/utils/source_data/quality_outcomes_framework/` | Public practice workbooks and the supplementary `2023-24/QOF2324/PREVALENCE_2324.csv` register extract through 2024--25; the current parser reconstructs 2021--22, 2022--23, 2023--24 and 2024--25 |
+
+The supplied 2023--24 workbook is kept unchanged as the official source file:
+its `DEP` sheet contains incidence rather than a depression register. The
+companion `PREVALENCE_2324.csv` is therefore joined by practice code and used
+as the register/prevalence supplement when the tests run, rather than silently
+overwriting the upstream workbook.
 
 Run the component audit with:
 
@@ -265,7 +271,7 @@ scripts/.venv/bin/python scripts/machine_learning/samhi/07_component_reconstruct
 
 Outputs are written to `results/component_reconstruction/`:
 
-* `three_component_panel.csv` — LSOA-year antidepressant, QOF and DLA/PIP values, with the hospital column explicitly missing.  `dla_pip` is the raw claimant-count component used by PLDR (not a percentage): PLDR values are retained for 2010--2022; where they are unavailable, the panel fills the count from DWP August DLA+PIP and records `dla_pip_source=DWP_August`.  The optional denominator-normalised DWP rate is `dwp_dla_pip_rate_pct`, with its `dwp_population_source_year` retained.  `qof_dep_source` distinguishes PLDR from patient-weighted public QOF practice allocation; 2023--24 remains missing because the public workbook has no depression prevalence field;
+* `three_component_panel.csv` — LSOA-year antidepressant, QOF and DLA/PIP values, with the hospital column explicitly missing.  `dla_pip` is the raw claimant-count component used by PLDR (not a percentage): PLDR values are retained for 2010--2022; where they are unavailable, the panel fills the count from DWP August DLA+PIP and records `dla_pip_source=DWP_August`.  The optional denominator-normalised DWP rate is `dwp_dla_pip_rate_pct`, with its `dwp_population_source_year` retained.  `qof_dep_source` distinguishes PLDR from patient-weighted public QOF practice allocation; the supplementary 2023--24 register extract now supplies 2024 QOF prevalence;
 * `component_coverage.csv` — row-level coverage by year and component; and
 * `component_vs_published_samhi_correlations.csv` — cross-sectional diagnostics against the published SAMHI index.
 
@@ -281,9 +287,12 @@ contribution cannot be recovered from public files.
 The corrected panel has complete antidepressant and PLDR QOF coverage for most
 2011--2022 LSOA-years, with small QOF gaps in 2018--2019. DWP combined
 DLA/PIP coverage is 32,392 LSOAs (98.62%) in 2023, 32,520 (99.01%) in 2024,
-and 32,555 (99.12%) in 2025. QOF depression prevalence remains unavailable for
-2023--2024 in the public practice workbooks, so those later rows must be
-labelled as incomplete-observable forecasts.
+and 32,555 (99.12%) in 2025. The 2023--24 workbook itself publishes incidence,
+but the supplementary register CSV supplies practice prevalence for 2024;
+its values are patient-weighted to LSOA and mapped from 2021 children to 2011
+SAMHI parents before joining the panel. The reconstructed QOF prevalence is
+present for 32,844/32,844 LSOAs in 2023, 32,745/32,845 (99.70%) in 2024, and
+32,845/32,845 in 2025; the 100 unmatched 2024 LSOAs remain explicitly missing.
 
 The corrected DLA file is now used in the extension. The refreshed DWP-to-PLDR
 calibration has usable overlap from 2014--2022, with year-specific Pearson
@@ -349,9 +358,9 @@ forecasts.
 calibration, the 2024 QOF carry-forward option and removal of historical SAMHI
 lags.  The calibrated and raw-DWP scenarios gave identical historical scores,
 because DWP is only used after 2022; their refreshed 2025 Bayesian forecast
-means were 1.257 and 1.486 respectively. Carrying 2023 QOF forward into 2024 did not
-change the refreshed mean Bayesian RMSE (0.325), while removing SAMHI history
-substantially worsened ElasticNet RMSE to 0.513. This supports retaining
+means were 1.011 and 1.240 respectively. Carrying 2023 QOF forward into 2024
+produced a virtually identical 2025 calibrated mean (1.011), while removing
+SAMHI history substantially worsened ElasticNet RMSE to 0.513. This supports retaining
 the calibrated public model as the primary specification and treating QOF
 imputation as a sensitivity rather than a preferred value.
 
@@ -362,9 +371,188 @@ Ridge, with 0.959 versus 0.927 interval coverage. This is encouraging but is
 still a screening result; it should be checked on another area and against a
 fully sampled spatial model before being treated as final.
 
+### 12. Indicator-removal and missingness experiments
+
+[`13_public_data_missingness_experiments.py`](13_public_data_missingness_experiments.py)
+tests how the public forecast changes when routine indicators are unavailable.
+All scenarios use the same 2017--2022 rolling-origin splits.  `remove_dwp`
+means removing the complete welfare feature (PLDR DLA/PIP in the historical
+panel and DWP DLA/PIP in the 2023--2025 extension), rather than pretending that
+the historical PLDR series is a DWP observation.  The two-indicator case is
+run for each pair: QOF+DWP, QOF+antidepressant, and DWP+antidepressant.  The
+`components_only` scenario removes the lagged published SAMHI feature as well,
+so it uses only antidepressants, QOF and DLA/PIP to predict the published SAMHI
+target.  This is a public-components proxy, not an official SAMHI
+reconstruction, because the hospital-attendance component is still absent.
+The
+`missingness_2023_2025` scenario applies seeded component masks using the
+pooled observed 2023--2025 rates:
+
+| Component | Observed missing rate, 2023--2025 |
+|---|---:|
+| QOF depression | 0.10% |
+| DWP DLA/PIP | 1.08% |
+| Antidepressants | 0.002% |
+
+The national all-indicator baseline averaged RMSE **0.325** for Bayesian Ridge,
+**0.322** for ElasticNet and **0.346** for persistence.  Removing QOF had
+almost no effect (Bayesian RMSE 0.324; ElasticNet 0.322), while removing the
+antidepressant feature worsened error (0.331 and 0.329).  Removing the welfare
+feature slightly improved the historical backtest (0.320 and 0.317), which
+indicates that its current calibration/geography may add noise; it is not
+evidence that welfare data are clinically unimportant.  The observed
+2023--2025 missingness pattern was negligible at these rates (RMSE 0.324 and
+0.322).
+
+Using only the three public components increased RMSE to **0.527** for
+Bayesian Ridge and **0.513** for ElasticNet, with Bayesian 95% interval coverage
+of 0.934 and substantially wider intervals.  It still beats neither the
+persistence baseline nor the history-plus-components models, but it is useful
+as an auditable public-data proxy and as a test of how much the unavailable
+hospital component and SAMHI history contribute.  Its recursive future means
+also become unstable by 2025, so components-only forecasts should be reported
+with uncertainty and should not be labelled as official SAMHI.
+
+For Lincolnshire, the spatial CAR pilot remained best across the scenarios:
+the all-indicator mean RMSE was **0.267**, compared with **0.286** for Bayesian
+Ridge, **0.285** for ElasticNet and **0.331** for persistence.  Across the
+indicator-removal tests, spatial RMSE stayed between 0.266 and 0.270, with
+about 0.96 mean 95% interval coverage.  This supports retaining the spatial
+pilot for local screening, while the national ElasticNet/Bayesian results are
+the appropriate comparison for England-wide forecasts.
+
+Run the complete experiment with:
+
+```bash
+scripts/.venv/bin/python scripts/machine_learning/samhi/13_public_data_missingness_experiments.py
+```
+
+Outputs are written to `results/public_missingness/`: `rolling_origin_metrics.csv`
+contains every year/model/scenario result; `scenario_summary.csv` contains
+the aggregated comparison; `future_scenario_summary.csv` contains 2023--2025
+forecast means; and the `observed_*missingness.csv` and
+`applied_missingness.csv` files record the missing-data audit and random seed.
+
+### 13. Public SAMHI-3 index
+
+[`14_public_samhi3_index.py`](14_public_samhi3_index.py) builds a separate
+public-data index from antidepressant prescribing, QOF depression and calibrated
+DLA/PIP.  Each component is standardised using its 2011--2022 mean and standard
+deviation, then combined with equal weights.  The reference statistics are
+saved in `results/public_samhi3/standardisation_reference.csv`; the index is
+therefore on a stable z-score scale and is not numerically comparable with the
+official SAMHI score.
+
+The index agrees reasonably well with published SAMHI in the overlap: mean
+Pearson correlation **0.840** and mean Spearman correlation **0.854** across
+2011--2022 (2022 Pearson **0.843**).  This confirms that it captures a similar
+spatial pattern, but it does not recover the missing hospital-attendance
+component.
+
+Rolling-origin forecasts of the Public SAMHI-3 target gave mean RMSE **0.138**
+for Bayesian Ridge using the three lagged components and **0.138** when the
+previous Public SAMHI-3 value was added.  For ElasticNet the corresponding
+values were **0.146** and **0.143**; persistence was **0.208**.  The small
+difference between the fitted models is expected:
+the target is itself constructed from the same three indicators, so this is a
+forecast of a transparent proxy rather than an independent validation of
+official SAMHI.  Recursive 2025 projections are unstable in some specifications
+and should be reported with uncertainty rather than treated as official scores.
+
+Run it with:
+
+```bash
+scripts/.venv/bin/python scripts/machine_learning/samhi/14_public_samhi3_index.py
+```
+
+Outputs are written to `results/public_samhi3/`, including
+`public_samhi3_index.csv`, `published_samhi_comparison.csv`, rolling-origin
+metrics/predictions and 2023--2025 recursive forecasts.
+
+### 14. Cross-model tournament: published SAMHI versus Public SAMHI-3
+
+[`15_public_target_model_tournament.py`](15_public_target_model_tournament.py)
+runs the earlier model families on the same lagged public-feature design:
+Bayesian Ridge, ElasticNet, Ridge, Random Forest, Extra Trees, LightGBM,
+XGBoost, CatBoost and persistence.  It evaluates three targets: published
+SAMHI, Public SAMHI-3 with its previous value plus components, and Public
+SAMHI-3 from components only.  The older multimodal feature blocks are not
+included, so this is an estimator comparison rather than a repeat of the full
+multimodal pipeline.
+
+Mean rolling-origin RMSE across 2017--2022 was:
+
+| Target | Best model | RMSE | Next comparison |
+|---|---|---:|---:|
+| Published SAMHI | Extra Trees | **0.320** | ElasticNet 0.322; Bayesian Ridge 0.325 |
+| Public SAMHI-3 + history | Extra Trees | **0.138** | Random Forest 0.140; ElasticNet 0.143 |
+| Public SAMHI-3 components only | Ridge/Bayesian Ridge | **0.142** | Random Forest 0.144; ElasticNet 0.146 |
+
+The Public SAMHI-3 RMSE values must not be compared numerically with the
+published-SAMHI RMSE values: they are different targets on different scales,
+and Public SAMHI-3 is constructed directly from the predictors.  Extra Trees
+is the strongest general-purpose point predictor in this controlled run, while
+Bayesian Ridge remains preferable when calibrated predictive intervals are
+required.  Recursive Public SAMHI-3 forecasts become unstable for some models
+by 2025, so model rankings should be based on rolling-origin validation rather
+than one unobserved forecast year.
+
+Run the tournament with:
+
+```bash
+scripts/.venv/bin/python scripts/machine_learning/samhi/15_public_target_model_tournament.py
+```
+
+Results are in `results/public_target_tournament/`, especially
+`model_summary.csv`, `rolling_origin_metrics.csv` and `future_summary.csv`.
+
+### 15. Web-app release
+
+The first dashboard release is available at `/public_samhi3`.  It provides the
+observed Public SAMHI-3 proxy for 2011--2025, per-LSOA 2023--2025 forecasts for
+Bayesian Ridge, ElasticNet, Ridge, Random Forest, Extra Trees, LightGBM,
+XGBoost and CatBoost, and proxy/error/change map modes.
+The map tooltip reports component coverage and the official SAMHI value where
+one exists.  The Need Index page also has an optional `Public SAMHI-3 proxy`
+layer and year slider; it is deliberately not included in the Need Index
+calculation.  The page warning states that the hospital-attendance component is
+missing and that the proxy is not official SAMHI.
+
+The page's data-source summary links to OpenPrescribing/NHS prescribing data,
+NHS England QOF, DWP Stat-Xplore DLA/PIP claims and the PLDR published SAMHI
+benchmark. Locally, the source files are under `scripts/utils/source_data`.
+The method is explicit: components are standardised against the 2011--2022
+reference panel, averaged with equal weights, and forecast using lagged
+components plus the previous proxy value. No hospital component is imputed.
+Bayesian Ridge intervals are approximate predictive intervals, not official
+SAMHI uncertainty or a clinical probability.
+
+The map also includes a `SAMHI-3 vs SAMHI standardised difference` layer. It
+subtracts within-year z-scores, rather than raw index values, because the
+public proxy and official SAMHI use different scales. It is available only for
+the 2011--2022 published-SAMHI overlap and is intended as a spatial agreement
+diagnostic, not a replacement SAMHI score.
+
+The dashboard data export is generated with:
+
+```bash
+scripts/.venv/bin/python scripts/machine_learning/samhi/16_public_samhi3_web_predictions.py
+```
+
+Global feature-impact tables for the selected model are generated with:
+
+```bash
+scripts/.venv/bin/python scripts/machine_learning/samhi/17_public_samhi3_shap.py
+```
+
+The page's “Top predictive drivers” table reports mean absolute SHAP impact
+percentages. Linear models use LinearSHAP and tree models use TreeSHAP. These
+are global descriptive associations from the 2011--2022 training panel, not
+causal effects or individual-level risk explanations.
+
 ### Public-data result charts
 
-[`12_public_data_plots.py`](12_public_data_plots.py) creates six charts from
+[`12_public_data_plots.py`](12_public_data_plots.py) creates seven charts from
 the refreshed outputs without retraining any model:
 
 ```bash
@@ -377,8 +565,9 @@ The PNGs are written to `results/public_plots/`:
 * `02_public_rolling_origin_rmse.png` — year-by-year held-out error;
 * `03_public_forecast_trajectories.png` — 2023--2025 model means and the Bayesian interval;
 * `04_component_correlations.png` — Pearson/Spearman agreement with published SAMHI;
-* `05_component_coverage.png` — available LSOA coverage for each observable component; and
-* `06_spatial_bayesian_comparison.png` — spatial versus non-spatial error and interval coverage.
+* `05_component_coverage.png` — available LSOA coverage for each observable component;
+* `06_spatial_bayesian_comparison.png` — spatial versus non-spatial error and interval coverage; and
+* `07_missingness_scenario_rmse.png` — national RMSE under indicator-removal and future-like missingness scenarios.
 
 ---
 
@@ -389,11 +578,11 @@ When using the Flask web application to view SAMHI predictions and projections, 
 *   **Predicted SAMHI**: The mental health need score predicted by the currently selected machine learning model for the selected year.
 *   **Actual SAMHI**: The ground-truth mental health need score recorded by the PLDR for that year.
     *   *(Note: For future projections like 2023–2025+, this field shows the **2022 Baseline** since the true values have not yet occurred).*
-*   **Prediction Error**: The mathematical difference between the model's prediction and reality (`Predicted SAMHI - Actual SAMHI`). 
+*   **Prediction Error**: The mathematical difference between the model's prediction and reality (`Predicted SAMHI - Actual SAMHI`).
     *   A **positive value (+)** means the model *over-predicted* the need (it anticipated things being worse than they were).
     *   A **negative value (-)** means the model *under-predicted* the need (it anticipated things being better than they were).
     *   *(Note: This metric is intentionally hidden for future projections where no ground truth exists).*
-*   **Direction of Change**: The absolute movement in the SAMHI score compared to the previous year (or the 2022 baseline, for projections). 
+*   **Direction of Change**: The absolute movement in the SAMHI score compared to the previous year (or the 2022 baseline, for projections).
     *   A **worsening (▲)** status indicates mental health need is increasing.
     *   An **improving (▼)** status indicates mental health need is decreasing.
 

@@ -98,9 +98,9 @@ def _read_qof_depression_practice(path: Path, year: int) -> pd.DataFrame:
 
     Recent QOF workbooks contain a ``DEP`` sheet.  The prevalence columns are
     not stable: some years publish two columns (previous/current year), while
-    2023--24 publishes no depression prevalence at all.  We therefore select
-    the final prevalence column when it exists and return an empty frame when
-    the workbook only contains achievement/incidence measures.
+    2023--24's workbook publishes incidence rather than prevalence.  We
+    therefore select the final prevalence column when it exists and return an
+    empty frame when the workbook only contains achievement/incidence measures.
     """
     import openpyxl
 
@@ -141,6 +141,34 @@ def _read_qof_depression_practice(path: Path, year: int) -> pd.DataFrame:
     return pd.DataFrame(records, columns=columns).drop_duplicates("practice_code", keep="last")
 
 
+def _read_qof_depression_prevalence_csv(path: Path, year: int) -> pd.DataFrame:
+    """Read the 2023--24 QOF prevalence extract with register counts.
+
+    The accompanying workbook omits the depression register because the
+    indicator was temporarily changed to incidence.  The supplementary CSV
+    contains the register count and adult practice-list denominator needed to
+    reconstruct the prevalence percentage.
+    """
+    columns = ["practice_code", "qof_dep_practice_pct", "qof_year"]
+    if not path.exists():
+        return pd.DataFrame(columns=columns)
+    raw = pd.read_csv(path, low_memory=False)
+    required = {"PRACTICE_CODE", "GROUP_CODE", "REGISTER", "PATIENT_LIST_TYPE", "PRACTICE_LIST_SIZE"}
+    if not required.issubset(raw.columns):
+        return pd.DataFrame(columns=columns)
+    out = raw[
+        raw["GROUP_CODE"].astype(str).str.upper().eq("DEP")
+        & raw["PATIENT_LIST_TYPE"].astype(str).str.upper().eq("18OV")
+    ].copy()
+    out["practice_code"] = out["PRACTICE_CODE"].map(normalise_code)
+    out["register"] = pd.to_numeric(out["REGISTER"], errors="coerce")
+    out["list_size"] = pd.to_numeric(out["PRACTICE_LIST_SIZE"], errors="coerce")
+    out = out[out["practice_code"].notna() & out["list_size"].gt(0) & out["register"].ge(0)]
+    out["qof_dep_practice_pct"] = out["register"] / out["list_size"] * 100.0
+    out["qof_year"] = year
+    return out[["practice_code", "qof_dep_practice_pct", "qof_year"]].drop_duplicates("practice_code", keep="last")
+
+
 def load_qof_practice_lsoa(root: Path) -> pd.DataFrame:
     """Allocate public practice QOF depression prevalence to LSOA11.
 
@@ -158,11 +186,20 @@ def load_qof_practice_lsoa(root: Path) -> pd.DataFrame:
         2023: qof_base / "2023-24" / "mental_health_neurology_group" / "qof-2324-prev-ach-pca-neu-prac.xlsx",
         2024: qof_base / "2024-25" / "mental_health_neurology_group" / "qof-2425-prev-ach-pca-neu-prac.xlsx",
     }
+    prevalence_csv_paths = {
+        2023: qof_base / "2023-24" / "QOF2324" / "PREVALENCE_2324.csv",
+    }
     output = []
     for year, workbook in workbook_paths.items():
-        practice = _read_qof_depression_practice(workbook, year)
+        prevalence_csv = prevalence_csv_paths.get(year)
+        if prevalence_csv is not None and prevalence_csv.exists():
+            practice = _read_qof_depression_prevalence_csv(prevalence_csv, year)
+            source_name = prevalence_csv.name
+        else:
+            practice = _read_qof_depression_practice(workbook, year)
+            source_name = workbook.name
         if practice.empty:
-            LOGGER.warning("No public QOF depression prevalence found for %s (%s)", year, workbook.name)
+            LOGGER.warning("No public QOF depression prevalence found for %s (%s)", year, source_name)
             continue
         patient_path = datasets / str(year + 1) / "july" / "gp-reg-pat-prac-lsoa-all.csv"
         if not patient_path.exists():
@@ -176,6 +213,16 @@ def load_qof_practice_lsoa(root: Path) -> pd.DataFrame:
         patients = patients[patients["SEX"].astype(str).str.upper().eq("ALL")].copy()
         patients["practice_code"] = patients["PRACTICE_CODE"].map(normalise_code)
         patients["lsoa11"] = patients["LSOA_CODE"].map(normalise_code)
+        # Recent GP registration extracts use 2021 LSOA codes, whereas the
+        # SAMHI panel is keyed to 2011 LSOAs. Map split 2021 children back to
+        # their 2011 parent before patient-weighted aggregation.
+        lookup_path = root / "datasets" / "lincolnshire_lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+        if lookup_path.exists():
+            geography = pd.read_csv(lookup_path, usecols=["LSOA11CD", "LSOA21CD"], dtype=str)
+            geography["LSOA11CD"] = geography["LSOA11CD"].map(normalise_code)
+            geography["LSOA21CD"] = geography["LSOA21CD"].map(normalise_code)
+            child_to_parent = geography.drop_duplicates("LSOA21CD").set_index("LSOA21CD")["LSOA11CD"]
+            patients["lsoa11"] = patients["lsoa11"].map(child_to_parent).fillna(patients["lsoa11"])
         patients["patients"] = pd.to_numeric(patients["NUMBER_OF_PATIENTS"], errors="coerce")
         patients = patients[patients["lsoa11"].str.startswith("E", na=False) & patients["patients"].gt(0)]
         patients = patients.merge(practice, on="practice_code", how="inner")
