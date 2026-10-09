@@ -1,7 +1,7 @@
 """
 03_forward_projections.py
 -------------------------
-Phase 3: True Multi-Year Forward Projections (2023, 2024, 2025) for SAMHI.
+Phase 3: True Multi-Year Forward Projections (2023–2027) for SAMHI.
 
 Incorporates:
   - Complete 2014-2022 panel training pool (295k+ national observations)
@@ -14,8 +14,8 @@ Incorporates:
   - Spatial neighbor spillovers (Queen contiguity) & District-level clusters
 
 Exports:
-  - results/forward_projections_2023_2025_lincolnshire.csv
-  - results/forward_projections_2023_2025_national.csv
+  - results/forward_projections_2023_2027_lincolnshire.csv.gz
+  - results/forward_projections_2023_2027_national.csv.gz
   - results/forward_projections_summary.csv
 """
 
@@ -585,6 +585,7 @@ def run_recursive_forward_projections(
     spatial_neighbors: Dict[str, List[str]],
     trained_models: Dict[str, any],
     feature_cols: List[str],
+    feature_fill_values: pd.Series,
     model_rmse: Dict[str, float],
     projection_years: List[int] = [2023, 2024, 2025]
 ) -> pd.DataFrame:
@@ -708,6 +709,11 @@ def run_recursive_forward_projections(
                     if feature == "gas_grid_disconnection_pct"
                     else master_df[feature].to_numpy()
                 )
+            # Some annual external features (notably the gas-grid series) do
+            # not extend to future projection years. Use training-panel
+            # medians, matching the historical panel's missing-value handling.
+            feat_df[feature_cols] = feat_df[feature_cols].apply(pd.to_numeric, errors="coerce")
+            feat_df[feature_cols] = feat_df[feature_cols].fillna(feature_fill_values)
 
             if name == "AR Baseline (Persistence)":
                 pred = l1
@@ -796,7 +802,7 @@ def expand_projections_to_all_2021_lsoas(
 
 def generate_summary_kpis(proj_df: pd.DataFrame, scope: str) -> pd.DataFrame:
     summaries = []
-    for yr in [2023, 2024, 2025]:
+    for yr in sorted(proj_df["year"].dropna().unique()):
         sub = proj_df[proj_df["year"] == yr]
         mean_score = sub["pred_multimodal_elasticnet"].mean()
         mean_change = sub["projected_change_vs_2022"].mean()
@@ -818,7 +824,7 @@ def generate_summary_kpis(proj_df: pd.DataFrame, scope: str) -> pd.DataFrame:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SAMHI Forward Projections (2023-2025)")
+    parser = argparse.ArgumentParser(description="SAMHI Forward Projections (2023-2027)")
     parser.add_argument("--scope", choices=["lincolnshire", "national", "both"], default="both")
     parser.add_argument("--output-dir", type=str, default="scripts/machine_learning/samhi/results")
     args = parser.parse_args()
@@ -833,7 +839,7 @@ def main():
 
     panel_df = create_training_panel(master_df, spatial_neighbors, start_year=2014, end_year=2022)
 
-    feature_cols = [
+    feature_cols = list(dict.fromkeys([
         "lag_1", "lag_2", "lag_3",
         "delta_1", "delta_2", "acceleration",
         "rolling_mean_3yr", "rolling_std_3yr", "rolling_min_3yr", "rolling_max_3yr",
@@ -845,14 +851,14 @@ def main():
         "is_rural", "isolation_scale", "isolation_normalized",
         "avg_download_speed", "gp_pt_time", "gp_car_time", "hosp_pt_time", "hosp_car_time", "no_car_pct",
         *ADDED_FEATURE_COLUMNS,
-    ]
+    ]))
 
     scopes = ["lincolnshire", "national"] if args.scope == "both" else [args.scope]
     all_summaries = []
 
     for sc in scopes:
         logger.info(f"\n=======================================================")
-        logger.info(f" RUNNING FORWARD PROJECTIONS: {sc.upper()} (2023 - 2025)")
+        logger.info(f" RUNNING FORWARD PROJECTIONS: {sc.upper()} (2023 - 2027)")
         logger.info(f"=======================================================")
 
         if sc == "lincolnshire":
@@ -865,20 +871,22 @@ def main():
             sc_neighbors = {}
 
         trained_models, model_rmse = train_models_for_projection(train_pool, feature_cols)
+        feature_fill_values = train_pool[feature_cols].median().fillna(0.0)
 
         proj_raw = run_recursive_forward_projections(
             scope_master,
             spatial_neighbors=sc_neighbors,
             trained_models=trained_models,
             feature_cols=feature_cols,
+            feature_fill_values=feature_fill_values,
             model_rmse=model_rmse,
-            projection_years=[2023, 2024, 2025]
+            projection_years=[2023, 2024, 2025, 2026, 2027]
         )
 
         proj_expanded = expand_projections_to_all_2021_lsoas(proj_raw, data["lookup"], scope=sc)
 
-        out_csv = output_dir / f"forward_projections_2023_2025_{sc}.csv"
-        proj_expanded.to_csv(out_csv, index=False)
+        out_csv = output_dir / f"forward_projections_2023_2027_{sc}.csv.gz"
+        proj_expanded.to_csv(out_csv, index=False, compression="gzip")
         logger.info(f"Saved forward projections to {out_csv}")
 
         summary_kpis = generate_summary_kpis(proj_expanded, sc)
@@ -892,7 +900,7 @@ def main():
         comb_summary.to_csv(comb_summary_path, index=False)
         logger.info(f"Saved combined projection summary to {comb_summary_path}")
 
-    logger.info("Phase 3 Forward Projections with new national features completed successfully!")
+    logger.info("Phase 3 Forward Projections through 2027 completed successfully!")
 
 
 if __name__ == "__main__":

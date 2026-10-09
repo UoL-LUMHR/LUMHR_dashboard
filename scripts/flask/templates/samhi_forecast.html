@@ -82,15 +82,19 @@
     border-radius: 0.75rem;
     padding: 0.85rem 1.1rem;
     box-shadow: 0 4px 18px rgba(15, 45, 58, 0.15);
-    max-width: 330px;
+    width: min(420px, calc(100vw - 40px));
+    max-height: 72vh;
+    overflow-y: auto;
     display: none;
     font-size: 0.84rem;
   }
   .map-inspector h4 {
-    margin: 0 0 0.35rem;
+    margin: 0;
     color: #0f2d3a;
     font-size: 0.95rem;
   }
+  .map-inspector-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin:0 0 .5rem; }
+  .map-inspector-close { display:flex; align-items:center; justify-content:center; flex:0 0 auto; width:28px; height:28px; padding:0; border:0; border-radius:50%; background:#edf4f7; color:#35515f; font-size:1.1rem; line-height:1; cursor:pointer; }
   .inspector-row {
     display: flex;
     justify-content: space-between;
@@ -103,6 +107,16 @@
     font-weight: 700;
     color: #0f2d3a;
   }
+  .samhi-history-chart { margin-top:.65rem; padding-top:.6rem; border-top:1px solid #e3edf1; }
+  .samhi-history-title { font-weight:800; color:#294957; font-size:.8rem; margin-bottom:.3rem; }
+  .samhi-history-status { color:#657985; font-size:.74rem; padding:.55rem 0; }
+  .samhi-history-svg { display:block; width:100%; height:auto; }
+  .samhi-history-legend { display:flex; flex-wrap:wrap; gap:.3rem .8rem; margin-top:.25rem; font-size:.69rem; color:#49616e; }
+  .samhi-history-legend-item { display:inline-flex; align-items:center; gap:.3rem; }
+  .samhi-history-key { display:inline-block; width:22px; height:3px; border-radius:2px; }
+  .samhi-history-key-projection { height:2px; background:repeating-linear-gradient(to right,#e07a18 0 5px,transparent 5px 8px); }
+  .samhi-history-note { margin:.35rem 0 0; color:#657985; font-size:.69rem; line-height:1.35; }
+  @media (max-width:600px) { .map-inspector { left:10px; bottom:10px; width:calc(100vw - 20px); max-height:55vh; } }
   #map_legend {
     margin-bottom: 64px;
 
@@ -274,15 +288,20 @@
       
       <!-- Interactive Area Inspector Card -->
       <div class="map-inspector" id="map_inspector">
-        <h4 id="inspector_title">LSOA Inspection</h4>
+        <div class="map-inspector-header"><h4 id="inspector_title">LSOA Inspection</h4><button class="map-inspector-close" id="samhi_inspector_close" type="button" aria-label="Close area details">&times;</button></div>
         <div class="inspector-row"><span class="label">District:</span><span class="val" id="insp_district">--</span></div>
         <div class="inspector-row"><span class="label" id="lbl_insp_pred">Predicted SAMHI:</span><span class="val" id="insp_pred">--</span></div>
         <div class="inspector-row" id="row_insp_actual"><span class="label">Actual SAMHI:</span><span class="val" id="insp_actual">--</span></div>
         <div class="inspector-row" id="row_insp_base" style="display:none;"><span class="label">2022 Baseline:</span><span class="val" id="insp_base">--</span></div>
         <div class="inspector-row" id="row_insp_err"><span class="label">Residual (Error):</span><span class="val" id="insp_err">--</span></div>
-        <div class="inspector-row" id="row_insp_ci" style="display:none;"><span class="label">95% Projection CI:</span><span class="val" id="insp_ci" style="font-size:0.76rem;">--</span></div>
+        <div class="inspector-row" id="row_insp_ci" style="display:none;"><span class="label">Approx. 95% projection range:</span><span class="val" id="insp_ci" style="font-size:0.76rem;">--</span></div>
         <div class="inspector-row" id="row_insp_decile" style="display:none;"><span class="label">Projected Decile:</span><span class="val" id="insp_decile">--</span></div>
         <div class="inspector-row"><span class="label" id="lbl_insp_dir">Change Direction:</span><span class="val" id="insp_direction">--</span></div>
+        <div class="samhi-history-chart">
+          <div class="samhi-history-title">SAMHI over time</div>
+          <div id="samhi_history_chart" class="samhi-history-status">Click an area to load its history.</div>
+          <p class="samhi-history-note">The model uses SAMHI history in both periods. Solid: historical test forecasts for years with observed SAMHI. Dashed: projections after actual data ends in 2022, recursively using earlier model estimates; external inputs are held at their latest available values. The vertical line marks the transition. 2026–2027 are exploratory longer-range projections, and their approximate ranges are not validated for a four- or five-year horizon.</p>
+        </div>
       </div>
     </div>
   </main>
@@ -312,6 +331,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let shapMethod = "ElasticNet LinearSHAP";
   let geojsonData = null;
   let geojsonLayer = null;
+  let inspectedAreaCode = null;
+  let historyRequestId = 0;
 
   const LINCOLNSHIRE_BOUNDS = [
     [52.64022, -0.82065],
@@ -415,7 +436,9 @@ document.addEventListener("DOMContentLoaded", () => {
       rowBase.style.display = "flex";
       rowCI.style.display = "flex";
       rowDecile.style.display = "flex";
-      document.getElementById("mode_help").textContent = "Future layers show model projections. Prediction Error is unavailable because observed 2023–2025 SAMHI outcomes do not yet exist.";
+      document.getElementById("mode_help").textContent = currentYear >= 2026
+        ? "2026–2027 are exploratory projections built recursively from earlier model estimates; external inputs are held at their latest available values. No observed SAMHI outcomes are available for these years."
+        : "2023–2025 are model projections. Prediction Error is unavailable because observed SAMHI outcomes do not yet exist.";
       if (currentDisplayMode === "actual" || currentDisplayMode === "err") {
         currentDisplayMode = "pred";
         document.querySelector("input[name='display_mode'][value='pred']").checked = true;
@@ -1017,7 +1040,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const l = e.target;
         l.setStyle({ weight: 2.2, color: "#0f2d3a", fillOpacity: 0.95 });
         l.bringToFront();
-        updateInspector(code, p, name);
       },
       mouseout: (e) => {
         if (geojsonLayer) {
@@ -1028,6 +1050,8 @@ document.addEventListener("DOMContentLoaded", () => {
       },
       click: (e) => {
         updateInspector(code, p, name);
+        inspectedAreaCode = code;
+        loadSamhiHistory(code);
       }
     });
 
@@ -1098,6 +1122,91 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function renderSamhiHistory(payload) {
+    const container = document.getElementById("samhi_history_chart");
+    const points = (payload.series || []).filter(point => point.actual !== null || point.prediction !== null);
+    const values = points.flatMap(point => [point.actual, point.prediction]).filter(value => value !== null && Number.isFinite(Number(value))).map(Number);
+    if (!values.length) {
+      container.className = "samhi-history-status";
+      container.textContent = "No SAMHI history is available for this area.";
+      return;
+    }
+    const width = 430, height = 220, left = 42, right = 12, top = 23, bottom = 32;
+    const plotWidth = width - left - right, plotHeight = height - top - bottom;
+    const firstYear = Math.min(...points.map(point => point.year));
+    const lastYear = Math.max(...points.map(point => point.year));
+    let low = Math.min(...values), high = Math.max(...values);
+    const padding = (high - low) * 0.1 || Math.max(Math.abs(low) * 0.1, 0.1);
+    low -= padding; high += padding;
+    const x = year => left + (year - firstYear) / (lastYear - firstYear || 1) * plotWidth;
+    const y = value => top + (high - value) / (high - low) * plotHeight;
+    const actualColor = "#0c7da0", predictionColor = "#e07a18";
+    let svg = `<svg class="samhi-history-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Actual and predicted SAMHI from ${firstYear} to ${lastYear}">`;
+    svg += `<text x="${left}" y="13" fill="#49616e" font-size="10" font-weight="700">SAMHI score</text>`;
+    for (let tick = 0; tick <= 4; tick++) {
+      const fraction = tick / 4, gy = top + fraction * plotHeight;
+      const value = high - fraction * (high - low);
+      svg += `<line x1="${left}" y1="${gy}" x2="${width-right}" y2="${gy}" stroke="#e5edf1" stroke-width="1"/><text x="${left-5}" y="${gy+3}" text-anchor="end" fill="#526873" font-size="9">${value.toFixed(2)}</text>`;
+    }
+    svg += `<line x1="${left}" y1="${top+plotHeight}" x2="${width-right}" y2="${top+plotHeight}" stroke="#8799a2" stroke-width="1"/>`;
+    const ticks = [...new Set([firstYear, ...[2011, 2014, 2017, 2020, 2023, 2025, 2027].filter(year => year > firstYear && year < lastYear), lastYear])];
+    for (const year of ticks) {
+      const px = x(year);
+      svg += `<line x1="${px}" y1="${top+plotHeight}" x2="${px}" y2="${top+plotHeight+3}" stroke="#8799a2"/><text x="${px}" y="${height-7}" text-anchor="middle" fill="#526873" font-size="9">${year}</text>`;
+    }
+    if (firstYear < 2023 && lastYear >= 2023) {
+      const boundary = x(2022.5);
+      svg += `<line x1="${boundary}" y1="${top}" x2="${boundary}" y2="${top+plotHeight}" stroke="#aab8bf" stroke-width="1" stroke-dasharray="3 3"/>`;
+    }
+    const drawSeries = (key, color, projectionState = null, dash = "") => {
+      let path = "", previousYear = null;
+      for (const point of points) {
+        const value = point[key] === null ? null : Number(point[key]);
+        const matchesProjection = projectionState === null || point.is_projection === projectionState;
+        if (value === null || !Number.isFinite(value) || !matchesProjection) { previousYear = null; continue; }
+        path += `${previousYear === point.year - 1 ? "L" : "M"}${x(point.year).toFixed(1)},${y(value).toFixed(1)} `;
+        previousYear = point.year;
+      }
+      if (path) svg += `<path d="${path.trim()}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"${dash ? ` stroke-dasharray="${dash}"` : ""}/>`;
+      for (const point of points) {
+        const value = point[key] === null ? null : Number(point[key]);
+        const matchesProjection = projectionState === null || point.is_projection === projectionState;
+        if (value === null || !Number.isFinite(value) || !matchesProjection) continue;
+        svg += `<circle cx="${x(point.year).toFixed(1)}" cy="${y(value).toFixed(1)}" r="2.4" fill="${color}"><title>${point.year}: ${value.toFixed(3)}</title></circle>`;
+      }
+    };
+    drawSeries("actual", actualColor);
+    drawSeries("prediction", predictionColor, false);
+    const lastObservedPrediction = points.find(point => point.year === 2022 && point.prediction !== null && Number.isFinite(Number(point.prediction)));
+    const firstFutureProjection = points.find(point => point.year === 2023 && point.prediction !== null && Number.isFinite(Number(point.prediction)));
+    if (lastObservedPrediction && firstFutureProjection) {
+      svg += `<path d="M${x(2022).toFixed(1)},${y(Number(lastObservedPrediction.prediction)).toFixed(1)} L${x(2023).toFixed(1)},${y(Number(firstFutureProjection.prediction)).toFixed(1)}" fill="none" stroke="${predictionColor}" stroke-width="2" stroke-dasharray="5 3" stroke-linecap="round"/>`;
+    }
+    drawSeries("prediction", predictionColor, true, "5 3");
+    svg += "</svg>";
+    container.className = "";
+    container.innerHTML = `${svg}<div class="samhi-history-legend"><span class="samhi-history-legend-item"><i class="samhi-history-key" style="background:${actualColor}"></i>Actual SAMHI</span><span class="samhi-history-legend-item"><i class="samhi-history-key" style="background:${predictionColor}"></i>Model estimate (solid: historical test; dashed: projection)</span></div>`;
+  }
+
+  async function loadSamhiHistory(code) {
+    const container = document.getElementById("samhi_history_chart");
+    const requestId = ++historyRequestId;
+    container.className = "samhi-history-status";
+    container.textContent = "Loading SAMHI history...";
+    try {
+      const response = await fetch(`/api/samhi_ml/history?scope=${currentScope}&code=${encodeURIComponent(code)}&model=${encodeURIComponent(currentModel)}`);
+      const payload = await response.json();
+      if (requestId !== historyRequestId) return;
+      if (!response.ok) throw new Error(payload.error || "SAMHI history is unavailable.");
+      renderSamhiHistory(payload);
+    } catch (error) {
+      if (requestId === historyRequestId) {
+        container.className = "samhi-history-status";
+        container.textContent = error?.message || "SAMHI history is unavailable.";
+      }
+    }
+  }
+
 
   function updateLegendDisplay(minVal, maxVal) {
     const div = document.getElementById("map_legend");
@@ -1146,6 +1255,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       loadMetrics();
       loadPredictionsAndRenderMap();
+      if (inspectedAreaCode) loadSamhiHistory(inspectedAreaCode);
     });
   });
 
@@ -1156,6 +1266,7 @@ document.addEventListener("DOMContentLoaded", () => {
       setMapViewForScope(currentScope);
       loadMetrics();
       loadPredictionsAndRenderMap();
+      if (inspectedAreaCode) loadSamhiHistory(inspectedAreaCode);
     });
   });
 
@@ -1171,6 +1282,13 @@ document.addEventListener("DOMContentLoaded", () => {
     loadMetrics();
     updateKpiDisplay();
     renderGeoJSONLayer();
+    if (inspectedAreaCode) loadSamhiHistory(inspectedAreaCode);
+  });
+
+  document.getElementById("samhi_inspector_close").addEventListener("click", () => {
+    inspector.style.display = "none";
+    inspectedAreaCode = null;
+    historyRequestId++;
   });
 
   document.querySelectorAll("input[name='display_mode']").forEach(radio => {

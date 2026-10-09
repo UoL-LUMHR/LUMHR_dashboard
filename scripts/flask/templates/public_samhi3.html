@@ -21,6 +21,12 @@
   .proxy-section-title { color:#294957; font-size:.78rem; font-weight:800; margin:.3rem 0 .15rem; }
   .proxy-note { margin:.6rem 0 0; color:#657985; font-size:.72rem; line-height:1.4; }
   .proxy-details { margin-top:.35rem; }
+  .proxy-history-chart { margin-top:.75rem; padding-top:.65rem; border-top:1px solid #e3edf1; }
+  .proxy-chart-status { color:#657985; font-size:.74rem; padding:.6rem 0; }
+  .proxy-chart-svg { display:block; width:100%; height:auto; overflow:visible; }
+  .proxy-chart-legend { display:flex; flex-wrap:wrap; gap:.3rem .75rem; margin-top:.35rem; font-size:.69rem; color:#49616e; }
+  .proxy-chart-legend-item { display:inline-flex; align-items:center; gap:.3rem; }
+  .proxy-chart-key { display:inline-block; width:14px; height:3px; border-radius:2px; }
   @media (max-width:600px) { .proxy-inspector { left:10px; bottom:10px; width:calc(100vw - 20px); max-height:48vh; } }
   #proxy_legend { box-sizing:border-box; width:280px; max-width:calc(100vw - 48px); margin-bottom:64px; background:rgba(255,255,255,.94); padding:8px 12px; border-radius:8px; border:1px solid #c8d9e2; font-size:11px; line-height:1.3; }
   .proxy-legend-title { font-weight:700; margin-bottom:4px; overflow-wrap:anywhere; }
@@ -68,7 +74,7 @@
         <li><a href="https://openprescribing.net/" target="_blank" rel="noopener">OpenPrescribing / NHS prescribing data</a> antidepressant prescribing.</li>
         <li><a href="https://digital.nhs.uk/data-and-information/data-tools-and-services/data-services/general-practice-data-for-planning-and-research" target="_blank" rel="noopener">NHS England QOF</a> depression prevalence allocated to LSOAs using the register/population crosswalk.</li>
         <li><a href="https://stat-xplore.dwp.gov.uk/" target="_blank" rel="noopener">DWP Stat-Xplore</a> DLA and PIP claims for mental-health/learning-difficulty reasons.</li>
-        <li><a href="https://pldr.org/dataset/small-area-mental-health-index-samhi-2noyv" target="_blank" rel="noopener">PLDR SAMHI</a> published SAMHI benchmark for 2011-2022 where available.</li>
+        <li><a href="https://pldr.org/dataset/small-area-mental-health-index-samhi-2noyv" target="_blank" rel="noopener">PLDR SAMHI</a> SAMHI benchmark for 2011-2022 where available.</li>
       </ul>
     </details>
 
@@ -159,6 +165,11 @@
         <div class="proxy-row"><span>SAMHI-3 vs SAMHI difference</span><span id="insp_comparison">--</span></div>
         <div class="proxy-row"><span>Official SAMHI</span><span id="insp_official">--</span></div>
       </div>
+      <div class="proxy-history-chart">
+        <div class="proxy-section-title">SAMHI scores over time</div>
+        <div id="proxy_history_chart" class="proxy-chart-status">Select an area to load its history.</div>
+        <p class="proxy-note">Gaps mean data are unavailable, e.g., SAMHI data no longer published after 2022.</p>
+      </div>
     </div>
   </section>
 </div>
@@ -175,6 +186,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let showUrban = true;
   let showRural = true;
   let fillOpacity = 0.82;
+  let selectedAreaCode = null;
+  let historyRequestId = 0;
   const map = L.map("map", { zoomControl: false, preferCanvas: true }).fitBounds([[52.64022, -0.82065], [53.61637, 0.35797]], { animate:false });
   L.control.zoom({ position:"topright" }).addTo(map);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:18, attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
@@ -233,6 +246,75 @@ document.addEventListener("DOMContentLoaded", () => {
     if(state.mode==="proxy" && (state.year>2025 || state.comparisonYear>2025)) return "Component-proxy data unavailable for one of these years";
     if(state.mode==="forecast") return "Model estimates unavailable for one of these years";
     return "Data unavailable for one of these years";
+  }
+  function renderAreaHistory(payload) {
+    const container=document.getElementById("proxy_history_chart");
+    const points=(payload.series||[]).filter(point=>[point.samhi,point.samhi3,point.prediction].some(value=>num(value)!==null));
+    const samhi=points.map(point=>num(point.samhi)).filter(value=>value!==null);
+    const samhi3=points.flatMap(point=>[num(point.samhi3),num(point.prediction)]).filter(value=>value!==null);
+    if(!samhi.length && !samhi3.length){container.textContent="No history is available to chart for this area.";return;}
+    const width=430, height=230, left=48, right=48, top=24, bottom=34;
+    const plotWidth=width-left-right, plotHeight=height-top-bottom;
+    const firstYear=Math.min(...points.map(point=>point.year)), lastYear=Math.max(...points.map(point=>point.year));
+    const bounds=values=>{
+      if(!values.length)return [-1,1];
+      let low=Math.min(...values), high=Math.max(...values);
+      const padding=(high-low)*.1 || Math.max(Math.abs(low)*.1,.1);
+      return [low-padding,high+padding];
+    };
+    const [samhiMin,samhiMax]=bounds(samhi), [samhi3Min,samhi3Max]=bounds(samhi3);
+    const x=year=>left+(year-firstYear)/(lastYear-firstYear||1)*plotWidth;
+    const y=(value,min,max)=>top+(max-value)/(max-min)*plotHeight;
+    const colors={samhi:"#7651a8",samhi3:"#00899a",prediction:"#d97706"};
+    let svg=`<svg class="proxy-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="SAMHI and SAMHI-3 scores over time from ${firstYear} to ${lastYear}">`;
+    svg+=`<text x="${left}" y="14" fill="${colors.samhi}" font-size="10" font-weight="700">SAMHI</text><text x="${width-right}" y="14" text-anchor="end" fill="${colors.samhi3}" font-size="10" font-weight="700">SAMHI-3 score</text>`;
+    for(let tick=0;tick<=4;tick++){
+      const fraction=tick/4, gy=top+fraction*plotHeight;
+      const leftValue=samhiMax-fraction*(samhiMax-samhiMin), rightValue=samhi3Max-fraction*(samhi3Max-samhi3Min);
+      svg+=`<line x1="${left}" y1="${gy}" x2="${width-right}" y2="${gy}" stroke="#e5edf1" stroke-width="1"/><text x="${left-6}" y="${gy+3}" text-anchor="end" fill="#7651a8" font-size="9">${leftValue.toFixed(2)}</text><text x="${width-right+6}" y="${gy+3}" fill="#00899a" font-size="9">${rightValue.toFixed(2)}</text>`;
+    }
+    svg+=`<line x1="${left}" y1="${top+plotHeight}" x2="${width-right}" y2="${top+plotHeight}" stroke="#8799a2" stroke-width="1"/>`;
+    const yearTicks=[...new Set([firstYear,...[2011,2014,2017,2020,2023,2027].filter(year=>year>firstYear&&year<lastYear),lastYear])];
+    for(const year of yearTicks){
+      const px=x(year);
+      svg+=`<line x1="${px}" y1="${top+plotHeight}" x2="${px}" y2="${top+plotHeight+3}" stroke="#8799a2"/><text x="${px}" y="${height-8}" text-anchor="middle" fill="#526873" font-size="9">${year}</text>`;
+    }
+    const drawSeries=(key,color,min,max)=>{
+      let path="", previousYear=null;
+      for(const point of points){
+        const value=num(point[key]);
+        if(value===null){previousYear=null;continue;}
+        path+=`${previousYear===point.year-1?"L":"M"}${x(point.year).toFixed(1)},${y(value,min,max).toFixed(1)} `;
+        previousYear=point.year;
+      }
+      if(path)svg+=`<path d="${path.trim()}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      for(const point of points){
+        const value=num(point[key]); if(value===null)continue;
+        svg+=`<circle cx="${x(point.year).toFixed(1)}" cy="${y(value,min,max).toFixed(1)}" r="2.4" fill="${color}"><title>${point.year}: ${value.toFixed(3)}</title></circle>`;
+      }
+    };
+    drawSeries("samhi",colors.samhi,samhiMin,samhiMax);
+    drawSeries("samhi3",colors.samhi3,samhi3Min,samhi3Max);
+    drawSeries("prediction",colors.prediction,samhi3Min,samhi3Max);
+    svg+="</svg>";
+    const modelLabel=document.querySelector("#model_select option:checked").textContent;
+    container.className="";
+    container.innerHTML=`${svg}<div class="proxy-chart-legend"><span class="proxy-chart-legend-item"><i class="proxy-chart-key" style="background:${colors.samhi}"></i>SAMHI</span><span class="proxy-chart-legend-item"><i class="proxy-chart-key" style="background:${colors.samhi3}"></i>SAMHI-3</span><span class="proxy-chart-legend-item"><i class="proxy-chart-key" style="background:${colors.prediction}"></i>${esc(modelLabel)} SAMHI-3 prediction</span></div>`;
+  }
+  async function loadAreaHistory(code) {
+    const container=document.getElementById("proxy_history_chart");
+    const requestId=++historyRequestId;
+    container.className="proxy-chart-status";
+    container.textContent="Loading area history...";
+    try{
+      const response=await fetch(`/api/public_samhi3/history?scope=${state.scope}&code=${encodeURIComponent(code)}&model=${encodeURIComponent(selectedModelName())}`);
+      const payload=await response.json();
+      if(requestId!==historyRequestId)return;
+      if(!response.ok)throw new Error(payload.error||"Area history is unavailable.");
+      renderAreaHistory(payload);
+    }catch(error){
+      if(requestId===historyRequestId){container.className="proxy-chart-status";container.textContent=error?.message||"Area history is unavailable.";}
+    }
   }
   function selectedValue(p) {
     if (state.mode === "proxy") return num(p.proxy);
@@ -295,6 +377,8 @@ document.addEventListener("DOMContentLoaded", () => {
     layer.on("click", () => {
       const inspector=document.getElementById("proxy_inspector");
       inspector.style.display="block";
+      selectedAreaCode=code;
+      loadAreaHistory(code);
       document.getElementById("inspector_title").textContent=`${name} (${code})`;
       document.getElementById("insp_district").textContent=p.district||"Not available";
       document.getElementById("insp_selected_label").textContent=title();
@@ -346,7 +430,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const unavailable=state.year>2022;
     control.disabled=unavailable;
     label.style.opacity=unavailable ? "0.45" : "1";
-    label.title=unavailable ? "Published SAMHI is unavailable after 2022" : "Compare standardised Public SAMHI-3 and published SAMHI";
+    label.title=unavailable ? "SAMHI is unavailable after 2022" : "Compare standardised SAMHI-3 and SAMHI";
     if(unavailable && state.mode==="comparison_error"){
       state.mode="proxy";
       document.querySelector("input[name='layer_mode'][value='proxy']").checked=true;
@@ -427,16 +511,16 @@ document.addEventListener("DOMContentLoaded", () => {
       status.textContent=`Map error: ${error?.message||error}`;
     }
   }
-  document.getElementById("scope_select").addEventListener("change",e=>{state.scope=e.target.value;state.district="All";load();});
+  document.getElementById("scope_select").addEventListener("change",e=>{state.scope=e.target.value;state.district="All";load();if(selectedAreaCode)loadAreaHistory(selectedAreaCode);});
   yearSelect.addEventListener("change",e=>{state.year=Number(e.target.value);updateComparisonAvailability();load();});
   comparisonYearSelect.addEventListener("change",e=>{state.comparisonYear=Number(e.target.value);load();});
   document.getElementById("district_select").addEventListener("change",e=>{state.district=e.target.value;load();});
-  document.getElementById("model_select").addEventListener("change",e=>{state.model=e.target.value;load();updateMetricSummary();loadShap();});
+  document.getElementById("model_select").addEventListener("change",e=>{state.model=e.target.value;load();updateMetricSummary();loadShap();if(selectedAreaCode)loadAreaHistory(selectedAreaCode);});
   document.querySelectorAll("input[name='layer_mode']").forEach(r=>r.addEventListener("change",e=>{state.mode=e.target.value;render();}));
   document.getElementById("show_urban").addEventListener("change",e=>{showUrban=e.target.checked;if(state.layer)state.layer.setStyle(style);});
   document.getElementById("show_rural").addEventListener("change",e=>{showRural=e.target.checked;if(state.layer)state.layer.setStyle(style);});
   document.getElementById("layer_opacity").addEventListener("input",e=>{fillOpacity=Number(e.target.value);document.getElementById("layer_opacity_value").textContent=`Opacity: ${fillOpacity.toFixed(2)}`;if(state.layer)state.layer.setStyle(style);});
-  document.getElementById("proxy_inspector_close").addEventListener("click",()=>{document.getElementById("proxy_inspector").style.display="none";});
+  document.getElementById("proxy_inspector_close").addEventListener("click",()=>{document.getElementById("proxy_inspector").style.display="none";selectedAreaCode=null;historyRequestId++;});
   const sidebar=document.getElementById("sidebar"), backdrop=document.getElementById("sidebar_backdrop"); document.getElementById("mobile_sidebar_toggle").onclick=()=>{sidebar.classList.add("open");backdrop.classList.add("active")}; document.getElementById("sidebar_close_btn").onclick=()=>{sidebar.classList.remove("open");backdrop.classList.remove("active")}; backdrop.onclick=()=>{sidebar.classList.remove("open");backdrop.classList.remove("active")};
   window.addEventListener("error", event => { const status=document.getElementById("status"); if(status && event?.message) status.textContent=`Map error: ${event.message}`; });
   window.addEventListener("unhandledrejection", event => { const status=document.getElementById("status"); if(status) status.textContent=`Map error: ${event?.reason?.message||event?.reason||"Unhandled browser error"}`; });

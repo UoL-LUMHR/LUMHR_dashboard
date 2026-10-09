@@ -1468,10 +1468,17 @@ _ML_PROJ_SUMMARY_CACHE: pd.DataFrame | None = None
 def _get_ml_projections_df(scope: str = "lincolnshire") -> pd.DataFrame:
     clean_scope = "lincolnshire" if scope == "lincolnshire" else "national"
     if clean_scope not in _ML_PROJECTIONS_CACHE:
+        # Prefer the extended projection file, retaining the prior dataset as
+        # a compatibility fallback for checkouts that have not updated data.
         csv_path = _dashboard_data_path(
             SAMHI_FORECAST_DATA_DIR,
-            f"forward_projections_2023_2025_{clean_scope}.csv",
+            f"forward_projections_2023_2027_{clean_scope}.csv",
         )
+        if not csv_path.exists():
+            csv_path = _dashboard_data_path(
+                SAMHI_FORECAST_DATA_DIR,
+                f"forward_projections_2023_2025_{clean_scope}.csv",
+            )
         if csv_path.exists():
             df = pd.read_csv(csv_path)
             df["LSOA21CD"] = df["LSOA21CD"].astype(str).str.strip()
@@ -1867,7 +1874,7 @@ def samhi_forecast_page() -> str:
         geojson_england=ENGLAND_GEOJSON_REL_PATH,
         test_years=[2020, 2021, 2022],
         pre_covid_test_years=[2018, 2019],
-        projection_years=[2023, 2024, 2025],
+        projection_years=[2023, 2024, 2025, 2026, 2027],
         default_year=2023,
     )
 
@@ -2064,6 +2071,38 @@ def public_samhi3_api():
     })
 
 
+@app.get("/api/public_samhi3/history")
+def public_samhi3_history_api():
+    scope = request.args.get("scope", "lincolnshire").strip().lower()
+    scope = "lincolnshire" if scope == "lincolnshire" else "national"
+    code = request.args.get("code", "").strip()
+    if not code:
+        return jsonify({"error": "An LSOA code is required."}), 400
+    model_names = {"bayesianridge", "elasticnet", "ridge", "randomforest", "extratrees", "lightgbm", "xgboost", "catboost"}
+    model = request.args.get("model", "bayesianridge").strip().lower()
+    if model not in model_names:
+        model = "bayesianridge"
+    df = _get_public_samhi3_df(scope)
+    if df.empty:
+        return jsonify({"error": "Public SAMHI-3 dashboard data are unavailable."}), 404
+    area = df[df["LSOA21CD"].eq(code)].sort_values("year")
+    if area.empty:
+        return jsonify({"error": "No SAMHI history is available for this LSOA."}), 404
+    prediction_column = f"pred_{model}"
+    series = []
+    for _, row in area.iterrows():
+        year = _num_or_none(row.get("year"))
+        if year is None:
+            continue
+        series.append({
+            "year": int(year),
+            "samhi": _num_or_none(row.get("samhi_index")),
+            "samhi3": _num_or_none(row.get("public_samhi3_proxy")),
+            "prediction": _num_or_none(row.get(prediction_column)),
+        })
+    return jsonify({"code": code, "model": model, "series": series})
+
+
 @app.get("/api/public_samhi3/shap")
 def public_samhi3_shap_api():
     model = request.args.get("model", "BayesianRidge").strip()
@@ -2088,6 +2127,71 @@ def public_samhi3_shap_api():
             "target": "Public SAMHI-3 proxy",
             "note": "Global mean absolute SHAP impact from models trained on the 2011–2022 panel; impacts are descriptive, not causal.",
         },
+    })
+
+
+@app.get("/api/samhi_ml/history")
+def samhi_ml_history_api():
+    scope = request.args.get("scope", "lincolnshire").strip().lower()
+    scope = "lincolnshire" if scope == "lincolnshire" else "national"
+    code = request.args.get("code", "").strip()
+    if not code:
+        return jsonify({"error": "An LSOA code is required."}), 400
+    allowed_models = {
+        "pred_multimodal_ridge", "pred_multimodal_elasticnet", "pred_multimodal_random_forest",
+        "pred_multimodal_extra-trees", "pred_multimodal_lightgbm", "pred_multimodal_xgboost",
+        "pred_multimodal_catboost", "pred_explainable_boosting_machine_(ebm)",
+        "pred_stacking_ensemble_(super_learner)", "pred_ar_baseline_persistence",
+        "pred_ar_baseline_momentum_drift",
+    }
+    model = request.args.get("model", "pred_multimodal_elasticnet").strip()
+    if model not in allowed_models:
+        model = "pred_multimodal_elasticnet"
+
+    actual_df = _get_public_samhi3_df(scope)
+    actual_rows = actual_df[actual_df["LSOA21CD"].eq(code)] if not actual_df.empty else pd.DataFrame()
+    actual_by_year = {}
+    if not actual_rows.empty:
+        for _, row in actual_rows.iterrows():
+            year = _num_or_none(row.get("year"))
+            value = _num_or_none(row.get("samhi_index"))
+            if year is not None and value is not None:
+                actual_by_year[int(year)] = value
+
+    prediction_by_year = {}
+    for experiment_set in (2, 1):
+        predictions = _get_ml_predictions_df(scope, experiment_set)
+        if predictions.empty or model not in predictions.columns:
+            continue
+        area_predictions = predictions[predictions["LSOA21CD"].eq(code)]
+        for _, row in area_predictions.iterrows():
+            year = _num_or_none(row.get("year"))
+            if year is not None:
+                prediction_by_year[int(year)] = _num_or_none(row.get(model))
+
+    projections = _get_ml_projections_df(scope)
+    if not projections.empty and model in projections.columns:
+        area_projections = projections[projections["LSOA21CD"].eq(code)]
+        for _, row in area_projections.iterrows():
+            year = _num_or_none(row.get("year"))
+            if year is not None:
+                prediction_by_year[int(year)] = _num_or_none(row.get(model))
+
+    years = sorted(set(actual_by_year) | set(prediction_by_year))
+    if not years:
+        return jsonify({"error": "No SAMHI history is available for this LSOA."}), 404
+    return jsonify({
+        "code": code,
+        "model": model,
+        "series": [
+            {
+                "year": year,
+                "actual": actual_by_year.get(year),
+                "prediction": prediction_by_year.get(year),
+                "is_projection": year >= 2023,
+            }
+            for year in years
+        ],
     })
 
 

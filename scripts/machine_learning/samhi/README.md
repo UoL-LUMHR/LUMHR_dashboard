@@ -91,18 +91,18 @@ python scripts/machine_learning/samhi/01_baseline_autoregressive.py --scope both
 python scripts/machine_learning/samhi/02_multimodal_features.py --scope both --experiment-set 2 --history both
 ```
 
-### 5. Run Phase 3 Multi-Year Forward Projections (2023 - 2025)
-Retrains LightGBM, Ridge, and ElasticNet on the complete historical panel up to 2022 (295k+ rows) and recursively forecasts future mental health need for **2023, 2024, and 2025**. ElasticNet is the primary projection model; the other model outputs are retained for comparison:
+### 5. Run Phase 3 Multi-Year Forward Projections (2023 - 2027)
+Retrains the model set on the complete historical panel up to 2022 (295k+ rows) and recursively forecasts future mental health need for **2023–2027**. ElasticNet is the primary projection model; the other model outputs are retained for comparison. The 2026–2027 values are exploratory longer-range projections: each year's SAMHI estimate feeds into the next, while external inputs remain at their latest available values. The historical backtests do not validate a four- or five-year forecast horizon, so later-year estimates should be interpreted with additional caution.
 
 ```bash
 # Run Lincolnshire forward projections (435 LSOAs)
-python scripts/machine_learning/samhi/03_forward_projections.py --scope lincolnshire
+python scripts/machine_learning/samhi/03_forward_projections.py --scope lincolnshire --output-dir datasets/samhi_forecast
 
 # Run National forward projections (33k+ LSOAs)
-python scripts/machine_learning/samhi/03_forward_projections.py --scope national
+python scripts/machine_learning/samhi/03_forward_projections.py --scope national --output-dir datasets/samhi_forecast
 
 # Run both scopes and export projection summary
-python scripts/machine_learning/samhi/03_forward_projections.py --scope both
+python scripts/machine_learning/samhi/03_forward_projections.py --scope both --output-dir datasets/samhi_forecast
 ```
 
 ### 6. Additional Options
