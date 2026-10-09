@@ -128,6 +128,8 @@ def score_model(panel: pd.DataFrame, target_year: int, model_name: str, features
 def future_predictions(panel: pd.DataFrame, features_by_model: dict[str, list[str]]) -> pd.DataFrame:
     train = panel[(panel["year"] <= 2022) & panel["public_samhi3_index"].notna()]
     future = panel[panel["year"].between(2023, 2025)].copy()
+    latest = panel[panel["year"].le(2025)].sort_values(["lsoa11", "year"])
+    latest_rows = latest.groupby("lsoa11", as_index=False).tail(1).copy()
     initial = panel[panel["year"].eq(2022)].groupby("lsoa11")["public_samhi3_index"].first()
     fitted = {
         name: make_model("BayesianRidge" if name.endswith("BayesianRidge") else "ElasticNet").fit(train[features], train["public_samhi3_index"])
@@ -135,8 +137,16 @@ def future_predictions(panel: pd.DataFrame, features_by_model: dict[str, list[st
     }
     previous = {name: initial.copy() for name in fitted}
     rows = []
-    for year in range(2023, 2026):
-        block = future[future["year"].eq(year)].copy()
+    zcolumns = [column for column in panel if column.startswith("public_samhi3_z_") and not column.endswith("_lag1")]
+    latest_components = {column: latest.groupby("lsoa11")[column].last() for column in zcolumns}
+    for year in range(2023, 2028):
+        if year <= 2025:
+            block = future[future["year"].eq(year)].copy()
+        else:
+            block = latest_rows.copy()
+            block["year"] = year
+            for column, values in latest_components.items():
+                block[f"{column}_lag1"] = block["lsoa11"].map(values)
         for name, fitted_model in fitted.items():
             block["public_samhi3_index_lag1"] = block["lsoa11"].map(previous[name])
             if name.endswith("BayesianRidge"):
@@ -208,7 +218,7 @@ def main() -> None:
     reference.to_csv(output_dir / "standardisation_reference.csv", index=False)
     pd.DataFrame(metrics).to_csv(output_dir / "rolling_origin_metrics.csv", index=False)
     pd.concat(predictions, ignore_index=True).to_csv(output_dir / "rolling_origin_predictions.csv", index=False)
-    future_predictions(panel, features_by_model).to_csv(output_dir / "future_predictions_2023_2025.csv", index=False)
+    future_predictions(panel, features_by_model).to_csv(output_dir / "future_predictions_2023_2027.csv", index=False)
     compare_published(panel).to_csv(output_dir / "published_samhi_comparison.csv", index=False)
 
 

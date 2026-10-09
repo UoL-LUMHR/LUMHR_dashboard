@@ -467,7 +467,8 @@ scripts/.venv/bin/python scripts/machine_learning/samhi/14_public_samhi3_index.p
 
 Outputs are written to `results/public_samhi3/`, including
 `public_samhi3_index.csv`, `published_samhi_comparison.csv`, rolling-origin
-metrics/predictions and 2023--2025 recursive forecasts.
+metrics/predictions and 2023--2027 recursive forecasts. The 2026--2027
+projections hold the latest available component values constant.
 
 ### 14. Cross-model tournament: published SAMHI versus Public SAMHI-3
 
@@ -508,10 +509,14 @@ Results are in `results/public_target_tournament/`, especially
 
 ### 15. Web-app release
 
-The first dashboard release is available at `/public_samhi3`.  It provides the
-observed Public SAMHI-3 proxy for 2011--2025, per-LSOA 2023--2025 forecasts for
+The dashboard is available at `/public_samhi3`. It provides the
+observed Public SAMHI-3 proxy for 2011--2025, per-LSOA 2017--2027 model
+predictions for
 Bayesian Ridge, ElasticNet, Ridge, Random Forest, Extra Trees, LightGBM,
-XGBoost and CatBoost, and proxy/error/change map modes.
+XGBoost and CatBoost. Observed proxy and forecast-error layers are unavailable
+for 2026--2027. Those two exploratory projections carry each LSOA's latest
+available component values (through 2025) forward and recursively forecast the
+index; they do not use observed data for the projection years.
 The map tooltip reports component coverage and the official SAMHI value where
 one exists.  The Need Index page also has an optional `Public SAMHI-3 proxy`
 layer and year slider; it is deliberately not included in the Need Index
@@ -533,11 +538,16 @@ public proxy and official SAMHI use different scales. It is available only for
 the 2011--2022 published-SAMHI overlap and is intended as a spatial agreement
 diagnostic, not a replacement SAMHI score.
 
-The dashboard data export is generated with:
+The dashboard data export reads the tracked component panel in
+`datasets/samhi_forecast/` and writes a gzip-compressed file directly into
+`datasets/public_samhi3/`:
 
 ```bash
 scripts/.venv/bin/python scripts/machine_learning/samhi/16_public_samhi3_web_predictions.py
 ```
+
+Regenerate this file after changing the forecast code, then commit the updated
+`datasets/public_samhi3/public_samhi3_web_predictions.csv.gz` with the code.
 
 Global feature-impact tables for the selected model are generated with:
 

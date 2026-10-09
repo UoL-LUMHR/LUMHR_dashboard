@@ -8,12 +8,24 @@
   .proxy-warning { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:.55rem; padding:.65rem .75rem; font-size:.78rem; line-height:1.35; }
   .proxy-metric { background:#f4f8fa; border:1px solid #d2e4ec; border-radius:.55rem; padding:.55rem .65rem; margin-top:.55rem; font-size:.78rem; }
   .proxy-metric strong { color:#0c7da0; }
-  .proxy-inspector { position:absolute; bottom:24px; left:24px; z-index:500; background:rgba(255,255,255,.96); border:1px solid #c8d9e2; border-radius:.75rem; padding:.85rem 1.1rem; box-shadow:0 4px 18px rgba(15,45,58,.15); max-width:340px; display:none; font-size:.84rem; }
-  .proxy-inspector h4 { margin:0 0 .35rem; color:#0f2d3a; font-size:.95rem; }
-  .proxy-row { display:flex; justify-content:space-between; gap:12px; padding:.15rem 0; }
-  .proxy-row span:first-child { color:#5d717d; }
-  .proxy-row span:last-child { font-weight:700; color:#0f2d3a; }
-  #proxy_legend { margin-bottom:64px; background:rgba(255,255,255,.94); padding:8px 12px; border-radius:8px; border:1px solid #c8d9e2; font-size:11px; line-height:1.3; }
+  .proxy-inspector { position:absolute; bottom:24px; left:24px; z-index:500; background:rgba(255,255,255,.98); border:1px solid #c8d9e2; border-radius:.8rem; padding:.9rem 1rem; box-shadow:0 5px 22px rgba(15,45,58,.2); width:min(410px,calc(100vw - 40px)); max-height:65vh; overflow:auto; display:none; font-size:.84rem; }
+  .proxy-inspector-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:.55rem; }
+  .proxy-inspector h4 { margin:0; color:#0f2d3a; font-size:1rem; line-height:1.3; }
+  .proxy-close { display:flex; align-items:center; justify-content:center; padding:0; border:0; background:#edf4f7; color:#35515f; border-radius:50%; width:28px; height:28px; font-size:1.1rem; line-height:1; cursor:pointer; flex:0 0 auto; }
+  .proxy-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(125px,auto); align-items:start; gap:12px; padding:.3rem 0; border-bottom:1px solid #edf2f5; }
+  .proxy-row > span:first-child { color:#5d717d; }
+  .proxy-row > span:last-child { font-weight:700; color:#0f2d3a; text-align:right; overflow-wrap:anywhere; }
+  .proxy-score { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:.7rem .75rem; margin:.5rem 0 .75rem; background:#f1f7fa; border:1px solid #d7e7ed; border-radius:.6rem; }
+  .proxy-score span { color:#49616e; }
+  .proxy-score strong { color:#0c7895; font-size:1.25rem; }
+  .proxy-section-title { color:#294957; font-size:.78rem; font-weight:800; margin:.3rem 0 .15rem; }
+  .proxy-note { margin:.6rem 0 0; color:#657985; font-size:.72rem; line-height:1.4; }
+  .proxy-details { margin-top:.35rem; }
+  @media (max-width:600px) { .proxy-inspector { left:10px; bottom:10px; width:calc(100vw - 20px); max-height:48vh; } }
+  #proxy_legend { box-sizing:border-box; width:280px; max-width:calc(100vw - 48px); margin-bottom:64px; background:rgba(255,255,255,.94); padding:8px 12px; border-radius:8px; border:1px solid #c8d9e2; font-size:11px; line-height:1.3; }
+  .proxy-legend-title { font-weight:700; margin-bottom:4px; overflow-wrap:anywhere; }
+  .proxy-legend-scale { width:100%; height:12px; border-radius:3px; }
+  .proxy-legend-values { display:flex; justify-content:space-between; width:100%; font-size:10px; color:#445763; margin-top:3px; }
 </style>
 {% endblock %}
 
@@ -29,11 +41,21 @@
     <div class="proxy-warning"><strong>Not official SAMHI.</strong> This index uses antidepressant prescribing, QOF depression and DLA/PIP only. The safeguarded hospital-attendance component is unavailable.</div>
 
     <details class="control">
+      <summary><strong>About the data</strong></summary>
+      <ul style="padding-left:1.1rem; margin:.25rem 0 0;">
+        <li><strong>0</strong> is around the average component-derived proxy level in the 2011–2022 reference data; positive values are higher and negative values lower.</li>
+        <li>This is a continuous relative score, not a decile ranking. It is a proxy, not diagnosed mental illness or a direct measure of clinical need.</li>
+        <li>2023–2025 component-derived values use the available data; 2026–2027 are model projections, not observed data.</li>
+      </ul>
+    </details>
+
+    <details class="control">
       <summary><strong>Method summary</strong></summary>
         <ul style="padding-left:1.1rem; margin:.25rem 0 0;">
           <li>Each available component is standardised against its 2011-2022 reference mean and standard deviation.</li>
           <li>The three z-scores are combined with equal weights. Hospital attendances are not imputed, so this is a proxy rather than the official SAMHI.</li>
           <li>Forecasts use lagged components and the previous proxy value; Bayesian Ridge also reports an approximate 95% prediction interval.</li>
+          <li>2026–2027 are exploratory projections using the latest component data available (through 2025). The 2027 score builds on the 2026 projected score; neither year has observed data.</li>
           <li>Out-of-time model forecasts begin in 2017; 2011–2016 are retained as training history and are not shown as fitted backcasts.</li>
           <li>Validation is rolling-origin and reports RMSE, MAE and directional accuracy. The displayed model is not a clinical risk score.</li>
           <li>The SAMHI-3 vs SAMHI map standardises both indices within each year before subtraction; it is available only for the 2011–2022 published-SAMHI overlap.</li>
@@ -60,6 +82,11 @@
     <div class="control">
       <label for="year_select" style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Year</label>
       <select id="year_select" style="width:100%; padding:.45rem .6rem; border-radius:.5rem; border:1px solid #b8ccd6; background:#fff;"></select>
+      <div class="muted" style="font-size:.72rem; margin-top:.3rem; line-height:1.3;">For 2026–2027, the latest component data are from 2025. The 2027 score also builds on the 2026 projection.</div>
+    </div>
+    <div class="control">
+      <label for="comparison_year_select" style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Comparison year</label>
+      <select id="comparison_year_select" style="width:100%; padding:.45rem .6rem; border-radius:.5rem; border:1px solid #b8ccd6; background:#fff;"></select>
     </div>
     <div class="control">
       <label for="district_select" style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Local Authority District</label>
@@ -81,12 +108,15 @@
     <div class="control">
       <label style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Map Layer</label>
       <div class="radio-group">
-        <label><input type="radio" name="layer_mode" value="proxy" checked> Observed Public SAMHI-3 proxy</label>
-        <label id="forecast_mode_label"><input id="forecast_mode" type="radio" name="layer_mode" value="forecast"> Model forecast (2017–2025)</label>
+        <label id="proxy_mode_label"><input id="proxy_mode" type="radio" name="layer_mode" value="proxy" checked> SAMHI-3</label>
+        <label id="forecast_mode_label"><input id="forecast_mode" type="radio" name="layer_mode" value="forecast"> Model predictions (2017–2027)</label>
         <label id="forecast_error_label"><input id="forecast_error_mode" type="radio" name="layer_mode" value="error"> Forecast error (2017–2025)</label>
-        <label><input type="radio" name="layer_mode" value="change"> Proxy change from previous year</label>
+        <label id="change_mode_label"><input id="change_mode" type="radio" name="layer_mode" value="change"> Proxy change from previous year</label>
+        <label id="model_change_label"><input id="model_change_mode" type="radio" name="layer_mode" value="model_change"> Model prediction change from previous year</label>
+        <label id="comparison_difference_label"><input id="comparison_difference_mode" type="radio" name="layer_mode" value="comparison_difference"> Difference from comparison year</label>
         <label id="comparison_error_label"><input id="comparison_error_mode" type="radio" name="layer_mode" value="comparison_error"> SAMHI-3 vs SAMHI (standardised difference; 2011–2022 only)</label>
       </div>
+      <div class="muted" style="font-size:.72rem; margin-top:.3rem; line-height:1.3;">2017–2022: rolling validation predictions. 2023–2025: model forecasts alongside the proxy calculated from the three components. 2026–2027 projections use component data through 2025; 2027 builds on the 2026 projected score. Comparison-year differences are index points; positive means a higher score, not a clinical judgement of “worse”.</div>
     </div>
     <div class="control">
       <label style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Map Settings</label>
@@ -113,16 +143,22 @@
     <button class="mobile-sidebar-toggle" id="mobile_sidebar_toggle" type="button">⚙️ Controls</button>
     <div id="map"></div>
     <div class="proxy-inspector" id="proxy_inspector">
-      <h4 id="inspector_title">LSOA</h4>
+      <div class="proxy-inspector-header"><h4 id="inspector_title">LSOA</h4><button class="proxy-close" id="proxy_inspector_close" type="button" aria-label="Close area details">&times;</button></div>
       <div class="proxy-row"><span>District</span><span id="insp_district">--</span></div>
-      <div class="proxy-row"><span>Public SAMHI-3 proxy</span><span id="insp_proxy">--</span></div>
-      <div class="proxy-row"><span>Selected forecast</span><span id="insp_forecast">--</span></div>
-      <div class="proxy-row"><span>Forecast error</span><span id="insp_error">--</span></div>
-      <div class="proxy-row"><span>Proxy change from previous year</span><span id="insp_change">--</span></div>
-      <div class="proxy-row"><span>SAMHI-3 vs SAMHI difference</span><span id="insp_comparison">--</span></div>
-      <div class="proxy-row"><span>95% interval</span><span id="insp_ci">--</span></div>
-      <div class="proxy-row"><span>Components available</span><span id="insp_components">--</span></div>
-      <div class="proxy-row"><span>Official SAMHI</span><span id="insp_official">--</span></div>
+      <div class="proxy-score"><span id="insp_selected_label">Public SAMHI-3 score</span><strong id="insp_selected_score">--</strong></div>
+      <div class="proxy-section-title" id="insp_change_section">Change in estimated relative need</div>
+      <div class="proxy-row" id="insp_previous_row"><span id="insp_previous_label">Change vs previous year</span><span id="insp_previous_change">--</span></div>
+      <div class="proxy-row" id="insp_comparison_row"><span id="insp_comparison_year">Comparison</span><span id="insp_year_difference">--</span></div>
+      <p class="proxy-note">“Improving” means the score is lower; “worsening” means it is higher. This is a relative proxy score, not a diagnosis.</p>
+      <div class="proxy-details">
+        <div class="proxy-row"><span>Component-derived proxy</span><span id="insp_proxy">--</span></div>
+        <div class="proxy-row"><span>Model estimate (separate from proxy)</span><span id="insp_forecast">--</span></div>
+        <div class="proxy-row"><span>Forecast error</span><span id="insp_error">--</span></div>
+        <div class="proxy-row"><span>95% interval</span><span id="insp_ci">--</span></div>
+        <div class="proxy-row"><span>Components available</span><span id="insp_components">--</span></div>
+        <div class="proxy-row"><span>SAMHI-3 vs SAMHI difference</span><span id="insp_comparison">--</span></div>
+        <div class="proxy-row"><span>Official SAMHI</span><span id="insp_official">--</span></div>
+      </div>
     </div>
   </section>
 </div>
@@ -135,7 +171,7 @@ document.addEventListener("DOMContentLoaded", () => {
     lincolnshire: "/datasets/{{ geojson_lincolnshire }}",
     national: "/datasets/{{ geojson_england }}"
   };
-  const state = { scope: "lincolnshire", year: 2023, district: "All", model: "pred_bayesianridge", mode: "proxy", data: {}, metrics: [], geo: null, layer: null, range: [0, 1] };
+  const state = { scope: "lincolnshire", year: 2026, comparisonYear: 2020, district: "All", model: "pred_bayesianridge", mode: "forecast", data: {}, metrics: [], geo: null, layer: null, range: [0, 1] };
   let showUrban = true;
   let showRural = true;
   let fillOpacity = 0.82;
@@ -147,7 +183,19 @@ document.addEventListener("DOMContentLoaded", () => {
   legend.addTo(map);
 
   const yearSelect = document.getElementById("year_select");
-  for (let year=2011; year<=2025; year++) { const o=document.createElement("option"); o.value=year; o.textContent=year + (year>=2023 ? " (forecast available)" : ""); if(year===2023)o.selected=true; yearSelect.appendChild(o); }
+  for (let year=2011; year<=2027; year++) {
+    const o=document.createElement("option"); o.value=year;
+    o.textContent=year>=2026 ? `${year} (projection)` : year>=2023 ? `${year} (forecast available)` : String(year);
+    if(year===state.year)o.selected=true;
+    yearSelect.appendChild(o);
+  }
+  const comparisonYearSelect=document.getElementById("comparison_year_select");
+  for(let year=2011;year<=2027;year++){
+    const option=document.createElement("option"); option.value=year; option.textContent=year>=2026?`${year} (projection)`:String(year);
+    if(year===state.comparisonYear)option.selected=true;
+    comparisonYearSelect.appendChild(option);
+  }
+  document.getElementById("forecast_mode").checked=true;
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
   const num = value => {
     if (value === null || value === undefined || value === "") return null;
@@ -157,12 +205,42 @@ document.addEventListener("DOMContentLoaded", () => {
   const fmt = value => num(value) === null ? "N/A" : num(value).toFixed(3);
   const fmtCount = value => num(value) === null ? "N/A" : String(Math.round(num(value)));
   const forecastError = p => { const forecast=num(p[state.model]), proxy=num(p.proxy); return forecast===null||proxy===null ? null : forecast-proxy; };
-  const changeDescription = value => { const change=num(value); if(change===null) return "N/A"; if(Math.abs(change)<0.05) return "Stable"; return change>0 ? "Worsening" : "Improving"; };
+  const changeDescription = value => { const change=num(value); if(change===null) return "Not available"; if(Math.abs(change)<0.05) return "About the same"; return change>0 ? "Worsening" : "Improving"; };
+  const changeSummary = value => { const change=num(value); return change===null ? "Not available" : `${changeDescription(change)} · ${fmt(change)} points`; };
+  function previousYearTrend(p) {
+    if (state.mode === "proxy") {
+      return {label:`Vs ${state.year-1} (component proxy)`, value:p.proxy_change, missing:`No component-proxy data for ${state.year-1}`};
+    }
+    if (state.mode === "forecast") {
+      const baseline=p.model_prediction_change_baseline || "model estimate";
+      return {label:`Vs ${state.year-1} (${baseline})`, value:p.model_prediction_change, missing:`No previous-year score for ${state.year-1}`};
+    }
+    return null;
+  }
+  function comparisonLabel() {
+    if (state.year === state.comparisonYear) return `Compared with ${state.comparisonYear}`;
+    const earlier=Math.min(state.year,state.comparisonYear), later=Math.max(state.year,state.comparisonYear);
+    return `From ${earlier} to ${later}`;
+  }
+  function comparisonValue(p) {
+    if (state.mode === "proxy") return num(p.proxy_comparison_difference);
+    if (state.mode === "forecast") return num(p.model_comparison_difference);
+    return num(p.comparison_difference);
+  }
+  function comparisonSummary(p) {
+    const value=comparisonValue(p);
+    if(value!==null) return changeSummary(value);
+    if(state.mode==="proxy" && (state.year>2025 || state.comparisonYear>2025)) return "Component-proxy data unavailable for one of these years";
+    if(state.mode==="forecast") return "Model estimates unavailable for one of these years";
+    return "Data unavailable for one of these years";
+  }
   function selectedValue(p) {
     if (state.mode === "proxy") return num(p.proxy);
     if (state.mode === "forecast") return num(p[state.model]);
     if (state.mode === "error") { const a=num(p[state.model]), b=num(p.proxy); return a===null||b===null ? null : a-b; }
     if (state.mode === "comparison_error") return num(p.proxy_official_std_error);
+    if (state.mode === "model_change") return num(p.model_prediction_change);
+    if (state.mode === "comparison_difference") return num(p.comparison_difference);
     return num(p.proxy_change);
   }
   function title() {
@@ -170,10 +248,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (state.mode === "forecast") return `${document.querySelector('#model_select option:checked').textContent} forecast`;
     if (state.mode === "error") return "Forecast error (forecast − proxy)";
     if (state.mode === "comparison_error") return "SAMHI-3 vs SAMHI difference";
+    if (state.mode === "model_change") return "Model prediction change from previous year";
+    if (state.mode === "comparison_difference") return comparisonLabel();
     return "Public SAMHI-3 change";
   }
   function paletteForMode() {
-    return (state.mode === "error" || state.mode === "change" || state.mode === "comparison_error")
+    return (state.mode === "error" || state.mode === "change" || state.mode === "comparison_error" || state.mode === "model_change" || state.mode === "comparison_difference")
       ? ["#2b83ba", "#abdda4", "#ffffbf", "#fdae61", "#d7191c"]
       // The continuous SAMHI index maps use the ColorBrewer YlGnBu scale.
       : ["#ffffd9", "#edf8b1", "#c7e9b4", "#7fcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#253494", "#081d58"];
@@ -182,11 +262,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const valid=values.filter(Number.isFinite);
     const palette=paletteForMode(); const gradient=`linear-gradient(to right,${palette.join(",")})`;
     if(!valid.length){
-      document.getElementById("proxy_legend").innerHTML=`<div style="font-weight:700;margin-bottom:4px;">${title()}</div><div style="width:170px;height:12px;background:${gradient};border-radius:3px;opacity:.45;"></div><div style="font-size:10px;color:#445763;margin-top:3px;">N/A for selected year</div>`;
+      document.getElementById("proxy_legend").innerHTML=`<div class="proxy-legend-title">${title()}</div><div class="proxy-legend-scale" style="background:${gradient};opacity:.45;"></div><div class="proxy-legend-values"><span>N/A for selected year</span></div>`;
       return;
     }
     const min=state.range[0], max=state.range[1];
-    document.getElementById("proxy_legend").innerHTML=`<div style="font-weight:700;margin-bottom:4px;">${title()}</div><div style="width:170px;height:12px;background:${gradient};border-radius:3px;"></div><div style="display:flex;justify-content:space-between;font-size:10px;color:#445763;"><span>${min.toFixed(2)}</span><span>${((min+max)/2).toFixed(2)}</span><span>${max.toFixed(2)}</span></div>`;
+    document.getElementById("proxy_legend").innerHTML=`<div class="proxy-legend-title">${title()}</div><div class="proxy-legend-scale" style="background:${gradient};"></div><div class="proxy-legend-values"><span>${min.toFixed(2)}</span><span>${((min+max)/2).toFixed(2)}</span><span>${max.toFixed(2)}</span></div>`;
   }
   function hexToRgb(hex) {
     const value=hex.replace("#",""); return [parseInt(value.slice(0,2),16),parseInt(value.slice(2,4),16),parseInt(value.slice(4,6),16)];
@@ -209,12 +289,45 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   function tooltip(feature, layer) {
     const code=feature.properties.LSOA21CD||feature.properties.CODE||""; const p=state.data[code]||{}; const name=p.name||feature.properties.LSOA21NM||code;
-    layer.bindTooltip(`<strong>${esc(name)}</strong><br><span style="font-size:.74rem;">${esc(code)}</span><hr style="margin:4px 0;border:0;border-top:1px solid #c8d9e2;"><b>${esc(title())}:</b> ${fmt(selectedValue(p))}<br><b>Components available:</b> ${fmtCount(p.n_components)} / 3<br><b>Forecast error:</b> ${fmt(forecastError(p))}<br><b>Proxy change from previous year:</b> ${fmt(p.proxy_change)} (${esc(changeDescription(p.proxy_change))})<br><b>SAMHI-3 vs SAMHI difference:</b> ${fmt(p.proxy_official_std_error)}<br><b>Official SAMHI:</b> ${fmt(p.official_samhi)}`, {sticky:true,className:"lsoa-tooltip"});
-    layer.on("click", () => { document.getElementById("proxy_inspector").style.display="block"; document.getElementById("inspector_title").textContent=`${name} (${code})`; document.getElementById("insp_district").textContent=p.district||"N/A"; document.getElementById("insp_proxy").textContent=fmt(p.proxy); document.getElementById("insp_forecast").textContent=fmt(p[state.model]); document.getElementById("insp_error").textContent=fmt(forecastError(p)); document.getElementById("insp_change").textContent=`${fmt(p.proxy_change)} (${changeDescription(p.proxy_change)})`; document.getElementById("insp_comparison").textContent=fmt(p.proxy_official_std_error); const lo=num(p.ci_lower_bayesianridge), hi=num(p.ci_upper_bayesianridge); document.getElementById("insp_ci").textContent=lo===null||hi===null?"N/A":`[${lo.toFixed(2)}, ${hi.toFixed(2)}]`; document.getElementById("insp_components").textContent=`${fmtCount(p.n_components)} / 3`; document.getElementById("insp_official").textContent=fmt(p.official_samhi); });
+    const previous=previousYearTrend(p);
+    const previousText=previous ? `${previous.label}: ${num(previous.value)===null ? previous.missing : changeSummary(previous.value)}` : "";
+    layer.bindTooltip(`<strong>${esc(name)}</strong><br><span style="font-size:.74rem;">${esc(code)}</span><hr style="margin:4px 0;border:0;border-top:1px solid #c8d9e2;"><b>${esc(title())}:</b> ${fmt(selectedValue(p))}${previousText ? `<br><b>${esc(previousText)}</b>` : ""}<br><b>${esc(comparisonLabel())}:</b> ${esc(comparisonSummary(p))}`, {sticky:true,className:"lsoa-tooltip"});
+    layer.on("click", () => {
+      const inspector=document.getElementById("proxy_inspector");
+      inspector.style.display="block";
+      document.getElementById("inspector_title").textContent=`${name} (${code})`;
+      document.getElementById("insp_district").textContent=p.district||"Not available";
+      document.getElementById("insp_selected_label").textContent=title();
+      document.getElementById("insp_selected_score").textContent=fmt(selectedValue(p));
+      document.getElementById("insp_proxy").textContent=fmt(p.proxy);
+      document.getElementById("insp_forecast").textContent=fmt(p[state.model]);
+      document.getElementById("insp_error").textContent=fmt(forecastError(p));
+      const previous=previousYearTrend(p);
+      const previousRow=document.getElementById("insp_previous_row");
+      const comparisonRow=document.getElementById("insp_comparison_row");
+      const changeSection=document.getElementById("insp_change_section");
+      const showComparison=["proxy", "forecast", "comparison_difference"].includes(state.mode);
+      previousRow.style.display=previous ? "grid" : "none";
+      comparisonRow.style.display=showComparison ? "grid" : "none";
+      changeSection.style.display=(previous || showComparison) ? "block" : "none";
+      if(state.mode==="comparison_difference") changeSection.textContent="Change from selected comparison year";
+      else changeSection.textContent="Change in estimated relative need";
+      if(previous) {
+        document.getElementById("insp_previous_label").textContent=previous.label;
+        document.getElementById("insp_previous_change").textContent=num(previous.value)===null ? previous.missing : changeSummary(previous.value);
+      }
+      document.getElementById("insp_comparison_year").textContent=comparisonLabel();
+      document.getElementById("insp_year_difference").textContent=comparisonSummary(p);
+      document.getElementById("insp_comparison").textContent=fmt(p.proxy_official_std_error);
+      const lo=num(p.ci_lower_bayesianridge), hi=num(p.ci_upper_bayesianridge);
+      document.getElementById("insp_ci").textContent=lo===null||hi===null?"Not available":`${lo.toFixed(2)} to ${hi.toFixed(2)}`;
+      document.getElementById("insp_components").textContent=`${fmtCount(p.n_components)} of 3`;
+      document.getElementById("insp_official").textContent=fmt(p.official_samhi);
+    });
   }
   function render() {
     const features=(state.geo||{}).features||[]; const visible=state.district==="All"?features:features.filter(f=>{const c=f.properties.LSOA21CD||f.properties.CODE||"";return state.data[c]?.district===state.district;});
-    if(state.layer) map.removeLayer(state.layer); const values=Object.values(state.data).map(selectedValue).filter(v=>v!==null); if(values.length){ const min=Math.min(...values), max=Math.max(...values); if(state.mode==="error"||state.mode==="change"||state.mode==="comparison_error"){ const limit=Math.max(Math.abs(min),Math.abs(max),0.15); state.range=[-limit,limit]; } else { state.range=[min,max]; } } else { state.range=[0,1]; } updateLegend(values);
+    if(state.layer) map.removeLayer(state.layer); const values=Object.values(state.data).map(selectedValue).filter(v=>v!==null); if(values.length){ const min=Math.min(...values), max=Math.max(...values); if(state.mode==="error"||state.mode==="change"||state.mode==="comparison_error"||state.mode==="model_change"||state.mode==="comparison_difference"){ const limit=Math.max(Math.abs(min),Math.abs(max),0.15); state.range=[-limit,limit]; } else { state.range=[min,max]; } } else { state.range=[0,1]; } updateLegend(values);
     state.layer=L.geoJSON({type:"FeatureCollection",features:visible},{style,onEachFeature:tooltip}).addTo(map);
   }
   function selectedModelName() {
@@ -254,6 +367,33 @@ document.addEventListener("DOMContentLoaded", () => {
       state.mode="proxy";
       document.querySelector("input[name='layer_mode'][value='proxy']").checked=true;
     }
+    const noObservedProxy=state.year>2025;
+    const proxyControl=document.getElementById("proxy_mode");
+    const changeControl=document.getElementById("change_mode");
+    const modelChangeControl=document.getElementById("model_change_mode");
+    const modelChangeLabel=document.getElementById("model_change_label");
+    proxyControl.disabled=noObservedProxy;
+    changeControl.disabled=noObservedProxy;
+    forecastErrorControl.disabled=forecastUnavailable || noObservedProxy;
+    modelChangeControl.disabled=state.year<2018;
+    document.getElementById("proxy_mode_label").style.opacity=noObservedProxy ? "0.45" : "1";
+    document.getElementById("change_mode_label").style.opacity=noObservedProxy ? "0.45" : "1";
+    forecastErrorLabel.style.opacity=(forecastUnavailable || noObservedProxy) ? "0.45" : "1";
+    modelChangeLabel.style.opacity=state.year<2018 ? "0.45" : "1";
+    modelChangeLabel.title=state.year<2018 ? "Model predictions have no prior forecast before 2017" : "Change in the selected model's prediction from its previous-year prediction";
+    if(state.year<2018 && state.mode==="model_change"){
+      state.mode="forecast";
+      document.getElementById("forecast_mode").checked=true;
+    }
+    if(noObservedProxy && ["proxy", "change", "error"].includes(state.mode)) {
+      state.mode="forecast";
+      document.getElementById("forecast_mode").checked=true;
+    }
+    if(noObservedProxy) {
+      forecastErrorLabel.title="Observed Public SAMHI-3 proxy values are unavailable after 2025";
+      document.getElementById("proxy_mode_label").title="Observed proxy data are unavailable after 2025";
+      document.getElementById("change_mode_label").title="Observed proxy changes are unavailable after 2025";
+    }
   }
   async function loadShap() {
     const tbody=document.querySelector("#public_shap_table tbody");
@@ -273,7 +413,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const status=document.getElementById("status");
     try {
       status.textContent="Loading Public SAMHI-3 data...";
-    const response=await fetch(`/api/public_samhi3?scope=${state.scope}&year=${state.year}&district=${encodeURIComponent(state.district)}`); const payload=await response.json(); if(!response.ok){document.getElementById("status").textContent=payload.error||"Unable to load data";return;}
+    const response=await fetch(`/api/public_samhi3?scope=${state.scope}&year=${state.year}&district=${encodeURIComponent(state.district)}&model=${encodeURIComponent(selectedModelName())}&comparison_year=${state.comparisonYear}`); const payload=await response.json(); if(!response.ok){document.getElementById("status").textContent=payload.error||"Unable to load data";return;}
     state.data=payload.predictions||{}; const district=document.getElementById("district_select"); const existing=state.district; district.innerHTML=(payload.districts||["All"]).map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join(""); state.district=(payload.districts||[]).includes(existing)?existing:"All"; district.value=state.district;
     if(!Object.keys(state.data).length) throw new Error("The API returned no LSOA rows for this selection.");
     const metric=payload.metrics?.find(m=>m.model==="ExtraTrees")||payload.metrics?.find(m=>m.model==="BayesianRidge"); document.getElementById("metric_summary").innerHTML=metric?`Rolling-origin RMSE: <strong>${Number(metric.mean_rmse).toFixed(3)}</strong> (${esc(metric.model)}; Public SAMHI-3 history + components)`:`No validation summary available.`;
@@ -289,12 +429,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   document.getElementById("scope_select").addEventListener("change",e=>{state.scope=e.target.value;state.district="All";load();});
   yearSelect.addEventListener("change",e=>{state.year=Number(e.target.value);updateComparisonAvailability();load();});
+  comparisonYearSelect.addEventListener("change",e=>{state.comparisonYear=Number(e.target.value);load();});
   document.getElementById("district_select").addEventListener("change",e=>{state.district=e.target.value;load();});
-  document.getElementById("model_select").addEventListener("change",e=>{state.model=e.target.value;render();updateMetricSummary();loadShap();});
+  document.getElementById("model_select").addEventListener("change",e=>{state.model=e.target.value;load();updateMetricSummary();loadShap();});
   document.querySelectorAll("input[name='layer_mode']").forEach(r=>r.addEventListener("change",e=>{state.mode=e.target.value;render();}));
   document.getElementById("show_urban").addEventListener("change",e=>{showUrban=e.target.checked;if(state.layer)state.layer.setStyle(style);});
   document.getElementById("show_rural").addEventListener("change",e=>{showRural=e.target.checked;if(state.layer)state.layer.setStyle(style);});
   document.getElementById("layer_opacity").addEventListener("input",e=>{fillOpacity=Number(e.target.value);document.getElementById("layer_opacity_value").textContent=`Opacity: ${fillOpacity.toFixed(2)}`;if(state.layer)state.layer.setStyle(style);});
+  document.getElementById("proxy_inspector_close").addEventListener("click",()=>{document.getElementById("proxy_inspector").style.display="none";});
   const sidebar=document.getElementById("sidebar"), backdrop=document.getElementById("sidebar_backdrop"); document.getElementById("mobile_sidebar_toggle").onclick=()=>{sidebar.classList.add("open");backdrop.classList.add("active")}; document.getElementById("sidebar_close_btn").onclick=()=>{sidebar.classList.remove("open");backdrop.classList.remove("active")}; backdrop.onclick=()=>{sidebar.classList.remove("open");backdrop.classList.remove("active")};
   window.addEventListener("error", event => { const status=document.getElementById("status"); if(status && event?.message) status.textContent=`Map error: ${event.message}`; });
   window.addEventListener("unhandledrejection", event => { const status=document.getElementById("status"); if(status) status.textContent=`Map error: ${event?.reason?.message||event?.reason||"Unhandled browser error"}`; });

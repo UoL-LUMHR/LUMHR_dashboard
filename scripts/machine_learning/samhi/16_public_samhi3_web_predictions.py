@@ -26,7 +26,7 @@ def load_module(path: Path, name: str):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create dashboard-ready Public SAMHI-3 predictions")
-    parser.add_argument("--output-dir", default="scripts/machine_learning/samhi/results/public_samhi3_web")
+    parser.add_argument("--output-dir", default="datasets/public_samhi3")
     args = parser.parse_args()
     root = project_root()
     tournament = load_module(root / "scripts/machine_learning/samhi/15_public_target_model_tournament.py", "public_web_tournament")
@@ -68,8 +68,29 @@ def main() -> None:
     fitted_models = {name: tournament.make_models()[name].fit(train[features], train[target]) for name in model_names}
     initial = panel[panel["year"].eq(2022)].groupby("lsoa11")[target].first()
     previous = {name: initial.copy() for name in model_names}
-    for year in range(2023, 2026):
-        block = future[future["year"].eq(year)].copy()
+
+    # For 2026--2027 there are no component observations. Hold each LSOA's
+    # latest available standardised component value (up to 2025) constant,
+    # while continuing each model's index forecast recursively. These are
+    # longer-range projections, not observed proxy values or validated errors.
+    latest = panel[panel["year"].le(2025)].sort_values(["lsoa11", "year"])
+    latest_rows = latest.groupby("lsoa11", as_index=False).tail(1).copy()
+    component_lags = {}
+    for label in ("antidepressant", "qof", "welfare"):
+        zcolumn = f"public_samhi3_z_{label}"
+        component_lags[label] = latest.groupby("lsoa11")[zcolumn].last()
+    extended_future = {}
+    for year in (2026, 2027):
+        block = latest_rows.copy()
+        block["year"] = year
+        block["year_centered"] = year - 2011
+        for label in ("antidepressant", "qof", "welfare"):
+            zcolumn = f"public_samhi3_z_{label}"
+            block[f"{zcolumn}_lag1"] = block["lsoa11"].map(component_lags[label])
+        extended_future[year] = block
+
+    for year in range(2023, 2028):
+        block = future[future["year"].eq(year)].copy() if year <= 2025 else extended_future[year]
         for name, fitted in fitted_models.items():
             block["public_samhi3_index_lag1"] = block["lsoa11"].map(previous[name])
             if name == "BayesianRidge":
@@ -98,10 +119,19 @@ def main() -> None:
     ).first()
     output = output.merge(prediction_frame, on=["lsoa11", "year"], how="left")
     output["proxy_change"] = output["public_samhi3_proxy"] - output["public_samhi3_proxy_lag1"]
+    projection_rows = []
+    latest_codes = latest_rows["lsoa11"].drop_duplicates()
+    for year in (2026, 2027):
+        projection = pd.DataFrame({"lsoa11": latest_codes, "year": year})
+        projection_rows.append(projection)
+    projections = pd.concat(projection_rows, ignore_index=True)
+    projections = projections.merge(prediction_frame, on=["lsoa11", "year"], how="left")
+    projections["forecast_assumption"] = "Latest available components held constant from 2025; index forecast recursive"
+    output = pd.concat([output, projections], ignore_index=True, sort=False)
     output = output.drop_duplicates(["lsoa11", "year"], keep="last")
     output_dir = root / args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
-    output.to_csv(output_dir / "public_samhi3_web_predictions.csv", index=False)
+    output.to_csv(output_dir / "public_samhi3_web_predictions.csv.gz", index=False, compression="gzip")
     print(f"Wrote {len(output):,} Public SAMHI-3 dashboard rows to {output_dir}")
 
 

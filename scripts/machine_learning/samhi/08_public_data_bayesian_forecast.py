@@ -37,7 +37,9 @@ def normal_crps(y: np.ndarray, mean: np.ndarray, sd: np.ndarray) -> float:
 
 
 def load_panel(root: Path) -> pd.DataFrame:
-    path = root / "scripts" / "machine_learning" / "samhi" / "results" / "component_reconstruction" / "three_component_panel.csv"
+    path = root / "datasets" / "samhi_forecast" / "three_component_panel.csv"
+    if not path.exists():
+        path = Path(f"{path}.gz")
     panel = pd.read_csv(path, low_memory=False)
     panel["lsoa11"] = panel["lsoa11"].astype(str).str.strip()
     panel["year"] = pd.to_numeric(panel["year"], errors="coerce").astype(int)

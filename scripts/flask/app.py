@@ -1889,13 +1889,32 @@ def public_samhi3_api():
         year = int(request.args.get("year", 2023))
     except (TypeError, ValueError):
         year = 2023
-    if year < 2011 or year > 2025:
-        return jsonify({"error": "Public SAMHI-3 year must be between 2011 and 2025."}), 400
+    if year < 2011 or year > 2027:
+        return jsonify({"error": "Public SAMHI-3 year must be between 2011 and 2027."}), 400
     district = request.args.get("district", "All").strip()
+    model_names = ["bayesianridge", "elasticnet", "ridge", "randomforest", "extratrees", "lightgbm", "xgboost", "catboost"]
+    model = request.args.get("model", "bayesianridge").strip().lower()
+    if model not in model_names:
+        model = "bayesianridge"
+    try:
+        comparison_year = int(request.args.get("comparison_year", 2020))
+    except (TypeError, ValueError):
+        comparison_year = 2020
+    if comparison_year < 2011 or comparison_year > 2027:
+        return jsonify({"error": "Comparison year must be between 2011 and 2027."}), 400
     df = _get_public_samhi3_df(scope)
     if df.empty:
         return jsonify({"error": "Public SAMHI-3 dashboard data are unavailable. Run the web prediction export first."}), 404
     df_year = df[df["year"].eq(year)].copy()
+    previous_rows = df[df["year"].eq(year - 1)][["LSOA21CD", f"pred_{model}", "public_samhi3_proxy"]].drop_duplicates("LSOA21CD")
+    previous_forecasts = previous_rows.set_index("LSOA21CD")[f"pred_{model}"]
+    previous_proxies = previous_rows.set_index("LSOA21CD")["public_samhi3_proxy"]
+    comparison_rows = df[df["year"].eq(comparison_year)].copy()
+    comparison_column = f"pred_{model}" if comparison_year >= 2026 else "public_samhi3_proxy"
+    comparison_values = comparison_rows.drop_duplicates("LSOA21CD").set_index("LSOA21CD")[comparison_column]
+    comparison_proxy_values = comparison_rows.drop_duplicates("LSOA21CD").set_index("LSOA21CD")["public_samhi3_proxy"]
+    model_comparison_column = f"pred_{model}" if comparison_year >= 2017 else "public_samhi3_proxy"
+    model_comparison_values = comparison_rows.drop_duplicates("LSOA21CD").set_index("LSOA21CD")[model_comparison_column]
     # Public SAMHI-3 is a z-score proxy while published SAMHI is on its own
     # index scale.  Compare them only after within-year standardisation.
     proxy_values = pd.to_numeric(df_year["public_samhi3_proxy"], errors="coerce")
@@ -1912,8 +1931,22 @@ def public_samhi3_api():
     df_year["proxy_official_raw_difference"] = proxy_values - official_values
     if district and district != "All":
         df_year = df_year[df_year["LAD22NM"].eq(district)]
+        previous_forecasts = previous_forecasts.loc[
+            previous_forecasts.index.isin(df_year["LSOA21CD"])
+        ]
+        comparison_values = comparison_values.loc[
+            comparison_values.index.isin(df_year["LSOA21CD"])
+        ]
+        previous_proxies = previous_proxies.loc[
+            previous_proxies.index.isin(df_year["LSOA21CD"])
+        ]
+        model_comparison_values = model_comparison_values.loc[
+            model_comparison_values.index.isin(df_year["LSOA21CD"])
+        ]
+        comparison_proxy_values = comparison_proxy_values.loc[
+            comparison_proxy_values.index.isin(df_year["LSOA21CD"])
+        ]
     districts = ["All", *sorted(df["LAD22NM"].dropna().astype(str).unique().tolist())]
-    model_names = ["bayesianridge", "elasticnet", "ridge", "randomforest", "extratrees", "lightgbm", "xgboost", "catboost"]
     prediction_columns = [
         *(f"pred_{name}" for name in model_names),
         *(bound for name in model_names for bound in (f"ci_lower_{name}", f"ci_upper_{name}")),
@@ -1923,6 +1956,42 @@ def public_samhi3_api():
         code = str(row.get("LSOA21CD", "")).strip()
         if not code:
             continue
+        model_prediction = _num_or_none(row.get(f"pred_{model}"))
+        previous_model_prediction = _num_or_none(previous_forecasts.get(code))
+        previous_proxy = _num_or_none(previous_proxies.get(code))
+        current_comparison_value = model_prediction if year >= 2026 else _num_or_none(row.get("public_samhi3_proxy"))
+        comparison_value = _num_or_none(comparison_values.get(code))
+        current_proxy = _num_or_none(row.get("public_samhi3_proxy"))
+        proxy_comparison_value = _num_or_none(comparison_proxy_values.get(code))
+        model_comparison_value = _num_or_none(model_comparison_values.get(code))
+        previous_model_change = (
+            model_prediction - previous_model_prediction
+            if model_prediction is not None and previous_model_prediction is not None
+            else model_prediction - previous_proxy
+            if model_prediction is not None and previous_proxy is not None
+            else None
+        )
+        model_change_baseline = (
+            "model estimate"
+            if model_prediction is not None and previous_model_prediction is not None
+            else "component proxy"
+            if model_prediction is not None and previous_proxy is not None
+            else None
+        )
+        proxy_comparison_difference = (
+            current_proxy - proxy_comparison_value
+            if current_proxy is not None and proxy_comparison_value is not None and year >= comparison_year
+            else proxy_comparison_value - current_proxy
+            if current_proxy is not None and proxy_comparison_value is not None
+            else None
+        )
+        model_comparison_difference = (
+            model_prediction - model_comparison_value
+            if model_prediction is not None and model_comparison_value is not None and year >= comparison_year
+            else model_comparison_value - model_prediction
+            if model_prediction is not None and model_comparison_value is not None
+            else None
+        )
         item = {
             "code": code,
             "name": str(row.get("LSOA21NM", "") or ""),
@@ -1938,6 +2007,18 @@ def public_samhi3_api():
             "proxy_official_raw_difference": _num_or_none(row.get("proxy_official_raw_difference")),
             "proxy_lag1": _num_or_none(row.get("public_samhi3_proxy_lag1")),
             "proxy_change": _num_or_none(row.get("proxy_change")),
+            "model_prediction_change": previous_model_change,
+            "model_prediction_change_baseline": model_change_baseline,
+            "comparison_year": comparison_year,
+            "comparison_difference": (
+                current_comparison_value - comparison_value
+                if current_comparison_value is not None and comparison_value is not None and year >= comparison_year
+                else comparison_value - current_comparison_value
+                if current_comparison_value is not None and comparison_value is not None
+                else None
+            ),
+            "proxy_comparison_difference": proxy_comparison_difference,
+            "model_comparison_difference": model_comparison_difference,
         }
         for column in prediction_columns:
             item[column] = _num_or_none(row.get(column))
@@ -1949,9 +2030,12 @@ def public_samhi3_api():
             _json_safe(record)
             for record in metrics[metrics["target"].eq("PublicSAMHI3_HistoryPlusComponents")].to_dict(orient="records")
         ]
+    long_range_projection = year >= 2026
     return jsonify({
         "scope": scope,
         "year": year,
+        "model": model,
+        "comparison_year": comparison_year,
         "district": district,
         "total_lsoas": len(records),
         "districts": districts,
@@ -1959,9 +2043,16 @@ def public_samhi3_api():
         "metrics": metric_records,
         "meta": {
             "label": "Public SAMHI-3 proxy",
-            "warning": "This is a public-data proxy built from antidepressant prescribing, QOF depression and DLA/PIP. It excludes the hospital-attendance component and is not official SAMHI.",
+            "warning": (
+                "2026–2027 are exploratory projections using the latest component data available (through 2025). The 2027 score builds on the 2026 projected score; no observed data for those years are used."
+                if long_range_projection
+                else "This is a public-data proxy built from antidepressant prescribing, QOF depression and DLA/PIP. It excludes the hospital-attendance component and is not official SAMHI."
+            ),
             "source": "Public SAMHI-3 component reconstruction",
-            "method": "Equal-weight mean of components standardised against 2011–2022 reference statistics; forecasts use lagged components and the previous proxy value.",
+            "method": "The observed proxy is the equal-weight mean of available components standardised against 2011–2022 reference statistics. Model forecasts use lagged components and recursively predicted index history.",
+            "is_projection": year >= 2023,
+            "long_range_projection": long_range_projection,
+            "observed_proxy_available": year <= 2025,
             "data_sources": {
                 "antidepressants": "OpenPrescribing / NHS prescribing data",
                 "qof_depression": "NHS England Quality and Outcomes Framework (practice data allocated to LSOAs)",
