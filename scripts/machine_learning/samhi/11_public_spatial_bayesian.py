@@ -40,7 +40,7 @@ def load_panel(root: Path):
     bayesian = import_module(root / "scripts/machine_learning/samhi/08_public_data_bayesian_forecast.py", "public_bayesian_spatial")
     comparison = import_module(root / "scripts/machine_learning/samhi/09_public_data_model_comparison.py", "public_model_comparison_spatial")
     panel = comparison.prepare_panel(root, bayesian)
-    lookup_path = root / "datasets/lincolnshire_lsoa/lsoa_2011_to_2021_lookup/LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+    lookup_path = root / "datasets/lsoa/lsoa_2011_to_2021_lookup/LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
     lookup = pd.read_csv(lookup_path, usecols=["LSOA11CD", "LSOA21CD", "LAD22NM"])
     lookup = lookup.rename(columns={"LSOA11CD": "lsoa11", "LSOA21CD": "lsoa21", "LAD22NM": "lad"})
     for column in ["lsoa11", "lsoa21"]:

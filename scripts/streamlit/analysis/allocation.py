@@ -221,9 +221,9 @@ def get_lsoa_centroids_cached(_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
 
 
 def prepare_gp_locations(df: pd.DataFrame) -> pd.DataFrame:
-    code_col = find_column(df, ["Code", "PRACTICE_CODE", "Practice Code"])
-    name_col = find_column(df, ["Name", "Practice Name", "PRACTICE_NAME"], required=False)
-    lsoa_col = find_column(df, ["LSOA", "LSOA_CODE"], required=False)
+    code_col = find_column(df, ["Code", "PRACTICE_CODE", "Practice Code", "OrganisationCode"])
+    name_col = find_column(df, ["Name", "Practice Name", "PRACTICE_NAME", "OrgName"], required=False)
+    lsoa_col = find_column(df, ["LSOA", "LSOA_CODE", "lsoa21cd"], required=False)
 
     lat_col = find_column(df, ["Latitude", "LAT", "lat"], required=False)
     lon_col = find_column(df, ["Longitude", "LON", "lng", "Long"], required=False)
@@ -280,13 +280,16 @@ def allocate_registers_to_lsoa(mapping_df: pd.DataFrame, gp_df: pd.DataFrame) ->
         "allocation_rows_missing_prescribing": int(alloc["Antidepressant_Items"].isna().sum()),
     }
 
-    alloc["Allocated_Depression"] = alloc["Dep_Register"].fillna(0) * alloc["Weight"].fillna(0)
-    alloc["Allocated_SMI"] = alloc["SMI_Register"].fillna(0) * alloc["Weight"].fillna(0)
-    alloc["Allocated_Antidepressant_Items"] = alloc["Antidepressant_Items"].fillna(0) * alloc["Weight"].fillna(0)
+    alloc["Allocated_Depression"] = alloc["Dep_Register"] * alloc["Weight"].fillna(0)
+    alloc["Allocated_SMI"] = alloc["SMI_Register"] * alloc["Weight"].fillna(0)
+    alloc["Allocated_Antidepressant_Items"] = alloc["Antidepressant_Items"] * alloc["Weight"].fillna(0)
 
-    lsoa_dep = alloc.groupby("LSOA_CODE", as_index=False)["Allocated_Depression"].sum()
-    lsoa_smi = alloc.groupby("LSOA_CODE", as_index=False)["Allocated_SMI"].sum()
-    lsoa_rx = alloc.groupby("LSOA_CODE", as_index=False)["Allocated_Antidepressant_Items"].sum()
+    dep_missing = alloc.groupby("LSOA_CODE")["Dep_Register"].apply(lambda values: values.isna().any())
+    smi_missing = alloc.groupby("LSOA_CODE")["SMI_Register"].apply(lambda values: values.isna().any())
+    rx_missing = alloc.groupby("LSOA_CODE")["Antidepressant_Items"].apply(lambda values: values.isna().any())
+    lsoa_dep = alloc.groupby("LSOA_CODE", as_index=False)["Allocated_Depression"].sum(min_count=1)
+    lsoa_smi = alloc.groupby("LSOA_CODE", as_index=False)["Allocated_SMI"].sum(min_count=1)
+    lsoa_rx = alloc.groupby("LSOA_CODE", as_index=False)["Allocated_Antidepressant_Items"].sum(min_count=1)
     lsoa_list = alloc.groupby("LSOA_CODE", as_index=False)["NUMBER_OF_PATIENTS"].sum()
 
     lsoa = lsoa_list.merge(lsoa_dep, on="LSOA_CODE", how="left").merge(lsoa_smi, on="LSOA_CODE", how="left").merge(
@@ -299,6 +302,12 @@ def allocate_registers_to_lsoa(mapping_df: pd.DataFrame, gp_df: pd.DataFrame) ->
     lsoa["Antidepressant_Items_Per_Patient"] = safe_divide(
         lsoa["Allocated_Antidepressant_Items"], lsoa["LSOA_Total_List"]
     )
+    for output, missing in [
+        ("Depression_Prevalence", dep_missing),
+        ("SMI_Prevalence", smi_missing),
+        ("Antidepressant_Items_Per_Patient", rx_missing),
+    ]:
+        lsoa[output] = lsoa[output].where(~lsoa["LSOA_CODE"].map(missing).fillna(False))
 
     return lsoa, mismatch_summary
 

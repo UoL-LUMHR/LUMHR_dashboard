@@ -4,8 +4,8 @@ import os
 from tqdm import tqdm
 
 # --- Configuration ---
-geojson_path = '../../datasets/lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson'
-lookup_path = '../../datasets/lincolnshire_lsoa/lsoa_2011_to_2021_lookup/LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv'
+geojson_path = '../../datasets/lsoa/lower-super-output-areas-2021-5RrVTw.geojson'
+lookup_path = '../../datasets/lsoa/lsoa_2011_to_2021_lookup/LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv'
 
 jts_files = [
     'source_data/journey_time_statistics/jts0505 LSOA Travel Time to GPs.ods',

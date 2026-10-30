@@ -23,11 +23,11 @@ import pandas as pd
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent.parent
 
-GEOJSON_PATH = PROJECT_ROOT / 'datasets' / 'lincolnshire_lsoa' / 'lower-super-output-areas-2021-5RrVTw.geojson'
+GEOJSON_PATH = PROJECT_ROOT / 'datasets' / 'lsoa' / 'lower-super-output-areas-2021-5RrVTw.geojson'
 LOOKUP_PATH = (
     PROJECT_ROOT
     / 'datasets'
-    / 'lincolnshire_lsoa'
+    / 'lsoa'
     / 'lsoa_2011_to_2021_lookup'
     / 'LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv'
 )

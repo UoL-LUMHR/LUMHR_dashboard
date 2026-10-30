@@ -4,7 +4,7 @@ import os
 
 # --- Configuration ---
 # I have kept the file paths consistent with your previous directory structure
-geojson_path = '../../datasets/lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson'
+geojson_path = '../../datasets/lsoa/lower-super-output-areas-2021-5RrVTw.geojson'
 ruc_csv_path = 'source_data/rural_urban_classification_2021_lsoa/Rural_Urban_Classification_(2021)_of_LSOAs_in_EW.csv'
 output_filename = 'lincolnshire_rural_urban_2021.csv'
 

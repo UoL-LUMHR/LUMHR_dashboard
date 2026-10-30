@@ -11,7 +11,7 @@ source_excel_path = (
     / "2025"
     / "File_1_IoD2025_Index_of_Multiple_Deprivation.xlsx"
 )
-geojson_path = script_dir / "../../datasets/lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson"
+geojson_path = script_dir / "../../datasets/lsoa/lower-super-output-areas-2021-5RrVTw.geojson"
 output_dir = script_dir / "../../datasets/indices_of_deprivation_imd/2025"
 output_dir.mkdir(parents=True, exist_ok=True)
 

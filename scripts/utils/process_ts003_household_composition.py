@@ -6,7 +6,7 @@ import pandas as pd
 # Paths
 script_dir = Path(__file__).resolve().parent
 src_file = script_dir / "source_data" / "TS003_household_composition" / "TS003 - Household composition.csv"
-geojson_path = script_dir / "../../datasets/lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson"
+geojson_path = script_dir / "../../datasets/lsoa/lower-super-output-areas-2021-5RrVTw.geojson"
 
 output_dir = script_dir / "../../datasets/TS003_household_composition"
 output_dir.mkdir(parents=True, exist_ok=True)

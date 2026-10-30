@@ -216,7 +216,7 @@ def load_qof_practice_lsoa(root: Path) -> pd.DataFrame:
         # Recent GP registration extracts use 2021 LSOA codes, whereas the
         # SAMHI panel is keyed to 2011 LSOAs. Map split 2021 children back to
         # their 2011 parent before patient-weighted aggregation.
-        lookup_path = root / "datasets" / "lincolnshire_lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+        lookup_path = root / "datasets" / "lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
         if lookup_path.exists():
             geography = pd.read_csv(lookup_path, usecols=["LSOA11CD", "LSOA21CD"], dtype=str)
             geography["LSOA11CD"] = geography["LSOA11CD"].map(normalise_code)
@@ -329,7 +329,7 @@ def load_dwp_welfare(source_root: Path, root: Path) -> pd.DataFrame:
         pip_paths.insert(0, pip_legacy_path)
     elif pip_legacy_path.exists() and dla_legacy_path.exists():
         LOGGER.warning("Ignoring %s because it is byte-identical to the DLA legacy export.", pip_legacy_path.name)
-    boundary_path = root / "datasets" / "england_lsoa" / "Lower_layer_Super_Output_Areas_December_2021_Boundaries_EW_BSC_V4_6894679968818356315.geojson"
+    boundary_path = root / "datasets" / "lsoa" / "england_lsoa_2021.geojson"
     output_columns = [
         "lsoa11", "year", "dwp_dla_pip_count", "dwp_dla_pip_rate_pct",
         "dwp_dla_count", "dwp_pip_count", "dwp_dla_rate_pct",
@@ -361,7 +361,7 @@ def load_dwp_welfare(source_root: Path, root: Path) -> pd.DataFrame:
         return pd.DataFrame(columns=output_columns)
     out = dla.merge(pip, on=["lsoa21", "year"], how="outer")
     out["dwp_dla_pip_count"] = out[["dwp_dla_count", "dwp_pip_count"]].sum(axis=1, min_count=2)
-    lookup_path = root / "datasets" / "lincolnshire_lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+    lookup_path = root / "datasets" / "lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
     # Use the national lookup copy if available; otherwise retain 2021 codes
     # and let the caller restrict to geographies with a valid crosswalk.
     if lookup_path.exists():

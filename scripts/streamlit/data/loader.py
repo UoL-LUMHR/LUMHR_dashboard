@@ -54,10 +54,56 @@ def get_paths(base_dir: Path) -> dict[str, Path]:
         / "patients_registered_gp_practice"
         / "july_2026"
         / "gp-reg-pat-prac-lsoa-female.csv",
-        "gp_locations": base_dir / "datasets" / "gp_locations" / "Lincolnshire_ICB_GPs.csv",
-        "lsoa_geo": base_dir / "datasets" / "lincolnshire_lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson",
+        "gp_locations": base_dir / "datasets" / "gp_locations" / "GP_Locations_epraccur.csv",
+        "lsoa_geo": base_dir / "datasets" / "lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson",
         "samhi": base_dir / "datasets" / "samhi" / "samhi_lincolnshire_2021_lsoa.csv",
     }
+
+
+def _normalise_postcode(value: object) -> str:
+    return "".join(str(value or "").upper().split())
+
+
+def _load_ods_gp_locations(path: Path, base_dir: Path) -> pd.DataFrame:
+    locations = pd.read_csv(path, dtype=str, encoding="utf-8-sig", low_memory=False).fillna("")
+    role = locations["RoleID"].astype(str).str.contains(r"(^|\|)RO76($|\|)", regex=True)
+    active = locations["StatusName"].astype(str).str.strip().str.upper().eq("ACTIVE")
+    locations = locations[role & active].drop_duplicates("OrganisationCode", keep="last").copy()
+
+    postcode_key = locations["Postcode"].map(_normalise_postcode)
+    wanted = set(postcode_key[postcode_key.ne("")])
+    lookup_path = (
+        base_dir
+        / "scripts"
+        / "utils"
+        / "source_data"
+        / "Postcode_to_OA_(2021)_to_LSOA_to_MSOA_to_LAD_(February_2026)_Best_Fit_Lookup_in_the_UK"
+        / "PCD_OA21_LSOA21_MSOA21_LAD_FEB26_UK_LU.csv"
+    )
+    matches = []
+    for chunk in pd.read_csv(
+        lookup_path,
+        usecols=["pcd7", "lsoa21cd", "dointr", "doterm"],
+        dtype=str,
+        chunksize=250_000,
+        low_memory=False,
+    ):
+        chunk["postcode_key"] = chunk["pcd7"].map(_normalise_postcode)
+        active_postcodes = chunk["doterm"].isna() | chunk["doterm"].astype(str).str.strip().eq("")
+        selected = chunk[active_postcodes & chunk["postcode_key"].isin(wanted)]
+        if not selected.empty:
+            matches.append(selected[["postcode_key", "lsoa21cd", "dointr"]])
+
+    postcode_lookup = (
+        pd.concat(matches, ignore_index=True)
+        if matches
+        else pd.DataFrame(columns=["postcode_key", "lsoa21cd", "dointr"])
+    )
+    postcode_lookup["dointr"] = pd.to_numeric(postcode_lookup["dointr"], errors="coerce")
+    postcode_lookup = postcode_lookup.sort_values("dointr").drop_duplicates("postcode_key", keep="last")
+    postcode_to_lsoa = postcode_lookup.set_index("postcode_key")["lsoa21cd"].to_dict()
+    locations["LSOA"] = postcode_key.map(postcode_to_lsoa).fillna("")
+    return locations
 
 
 @st.cache_data(show_spinner=False)
@@ -73,7 +119,7 @@ def load_raw_data_cached(base_dir_str: str) -> dict[str, object]:
     prescribing_df = pd.read_csv(paths["prescribing"])
     map_male_df = pd.read_csv(paths["mapping_male"])
     map_female_df = pd.read_csv(paths["mapping_female"])
-    gp_loc_df = pd.read_csv(paths["gp_locations"])
+    gp_loc_df = _load_ods_gp_locations(paths["gp_locations"], base_dir)
     samhi_df = pd.read_csv(paths["samhi"])
 
     with open(paths["lsoa_geo"], "r", encoding="utf-8") as f:

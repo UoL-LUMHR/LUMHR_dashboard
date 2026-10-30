@@ -9,7 +9,7 @@ This dataset has been filtered and enriched for all **435 Lower Layer Super Outp
 * **Local Source Directory**: `scripts/utils/source_data/lsoa_classification_2021_2/`
   * `lsoa_dz_sdz_lookup.csv`
   * `classification_codes_and_names_ukoac_lsoac.csv`
-* **Boundary Reference**: [`datasets/lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson`](../lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson)
+* **Boundary Reference**: [`datasets/lsoa/lower-super-output-areas-2021-5RrVTw.geojson`](../lsoa/lower-super-output-areas-2021-5RrVTw.geojson)
 
 ## Files in this Directory
 * `lincolnshire_lsoa_classification_2021_2.csv` — CSV containing all 435 Lincolnshire 2021 LSOAs with Supergroup, Group, and Subgroup codes and descriptive names.

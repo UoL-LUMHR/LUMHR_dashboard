@@ -79,9 +79,15 @@
     </details>
 
     <div class="control">
-      <label for="scope_select" style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Geographic Scope</label>
+      <label for="scope_select" style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Geographic Area</label>
       <select id="scope_select" style="width:100%; padding:.45rem .6rem; border-radius:.5rem; border:1px solid #b8ccd6; background:#fff;">
         <option value="lincolnshire" selected>Lincolnshire</option>
+        <option value="north_lincolnshire">North Lincolnshire</option>
+        <option value="north_east_lincolnshire">North East Lincolnshire</option>
+        <option value="greater_lincolnshire">Greater Lincolnshire</option>
+        <option value="nottinghamshire">Nottinghamshire</option>
+        <option value="derbyshire">Derbyshire</option>
+        <option value="lincolnshire_nottinghamshire_derbyshire">Lincolnshire, Nottinghamshire and Derbyshire</option>
         <option value="national">England National</option>
       </select>
     </div>
@@ -178,10 +184,7 @@
 {% block scripts %}
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-  const GEOJSON = {
-    lincolnshire: "/datasets/{{ geojson_lincolnshire }}",
-    national: "/datasets/{{ geojson_england }}"
-  };
+  const GEOJSON = Object.fromEntries(Object.entries({{ geojson_by_scope|tojson }}).map(([scope, path]) => [scope, `/datasets/${path}`]));
   const state = { scope: "lincolnshire", year: 2026, comparisonYear: 2020, district: "All", model: "pred_bayesianridge", mode: "forecast", data: {}, metrics: [], geo: null, layer: null, range: [0, 1] };
   let showUrban = true;
   let showRural = true;
@@ -503,7 +506,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const metric=payload.metrics?.find(m=>m.model==="ExtraTrees")||payload.metrics?.find(m=>m.model==="BayesianRidge"); document.getElementById("metric_summary").innerHTML=metric?`Rolling-origin RMSE: <strong>${Number(metric.mean_rmse).toFixed(3)}</strong> (${esc(metric.model)}; Public SAMHI-3 history + components)`:`No validation summary available.`;
     state.metrics=payload.metrics||[]; updateMetricSummary();
     document.getElementById("status").textContent=`Loaded ${Object.keys(state.data).length.toLocaleString()} LSOAs. ${payload.meta?.warning||""}`;
-    if(!state.geo || state.geo._scope!==state.scope){ const geoResponse=await fetch(GEOJSON[state.scope]); if(!geoResponse.ok) throw new Error(`Boundary request failed (${geoResponse.status})`); const g=await geoResponse.json(); if(!Array.isArray(g.features)) throw new Error("Boundary response contains no GeoJSON features"); g._scope=state.scope; state.geo=g; if(state.scope==="national")map.setView([52.75,-1.65],6); else map.fitBounds([[52.64022,-0.82065],[53.61637,0.35797]],{animate:false}); }
+    if(!state.geo || state.geo._scope!==state.scope){ const geoResponse=await fetch(GEOJSON[state.scope]); if(!geoResponse.ok) throw new Error(`Boundary request failed (${geoResponse.status})`); const g=await geoResponse.json(); if(!Array.isArray(g.features)) throw new Error("Boundary response contains no GeoJSON features"); g._scope=state.scope; state.geo=g; if(state.scope==="national")map.setView([52.75,-1.65],6); else map.fitBounds(L.geoJSON(g).getBounds(),{animate:false}); }
     render();
     setTimeout(()=>map.invalidateSize(),50);
     } catch(error) {

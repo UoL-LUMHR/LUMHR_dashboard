@@ -128,7 +128,7 @@ def load_all_datasets(project_root: Path) -> Dict[str, pd.DataFrame]:
     samhi_path = datasets_dir / "samhi" / "samhi_21_01_v5.00_2011_2022_LSOA.csv"
     lookup_path = (
         datasets_dir
-        / "lincolnshire_lsoa"
+        / "lsoa"
         / "lsoa_2011_to_2021_lookup"
         / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
     )
@@ -143,7 +143,7 @@ def load_all_datasets(project_root: Path) -> Dict[str, pd.DataFrame]:
         ts003_path = datasets_dir / "TS003_household_composition" / "lincolnshire_ts003_household_composition.csv"
 
     car_path = datasets_dir / "car_or_van_availability" / "TS045-2021-4-filtered-2026-08-24T10_54_11Z.csv"
-    geojson_path = datasets_dir / "lincolnshire_lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson"
+    geojson_path = datasets_dir / "lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson"
 
     # National additions
     imd25_path = datasets_dir / "indices_of_deprivation_imd" / "2025" / "england_imd_2025_lsoa.csv"

@@ -418,7 +418,7 @@ def build_panel(root: Path, scope: str = "lincolnshire") -> pd.DataFrame:
     datasets = root / "datasets"
     samhi = pd.read_csv(datasets / "samhi" / "samhi_21_01_v5.00_2011_2022_LSOA.csv")
     samhi["lsoa11"] = samhi["lsoa11"].map(_normalise_code)
-    lookup_path = datasets / "lincolnshire_lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+    lookup_path = datasets / "lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
     lookup = pd.read_csv(lookup_path, usecols=["LSOA11CD", "LSOA21CD", "LAD22NM"])
     lookup = lookup.rename(columns={"LSOA11CD": "lsoa11", "LSOA21CD": "lsoa21", "LAD22NM": "lad"})
     lookup["lsoa11"] = lookup["lsoa11"].map(_normalise_code)
@@ -511,7 +511,7 @@ def load_spatial_adjacency(root: Path, codes: Sequence[str]) -> Dict[str, List[s
     try:
         import geopandas as gpd
 
-        path = root / "datasets" / "lincolnshire_lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson"
+        path = root / "datasets" / "lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson"
         gdf = gpd.read_file(path)[["CODE", "geometry"]]
         wanted = {str(code) for code in codes if pd.notna(code)}
         gdf = gdf[gdf["CODE"].isin(wanted)].reset_index(drop=True)

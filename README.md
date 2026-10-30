@@ -28,7 +28,7 @@ Supporting datasets are documented and organized in [datasets](datasets/):
 - [gp_prescribing_data](datasets/gp_prescribing_data/) - Antidepressant prescribing data
 - [indices_of_deprivation_imd](datasets/indices_of_deprivation_imd/) - English Indices of Deprivation (IMD)
 - [journey_time_statistics](datasets/journey_time_statistics/) - Travel times to health services by mode
-- [lincolnshire_lsoa](datasets/lincolnshire_lsoa/) - LSOA boundary geography
+- [lsoa](datasets/lsoa/) - England, Lincolnshire, Nottinghamshire, and Derbyshire LSOA boundaries and geography lookup
 - [lsoa_classification_2021_2](datasets/lsoa_classification_2021_2/) - 2021 UK LSOA geodemographic classification
 - [patients_registered_gp_practice](datasets/patients_registered_gp_practice/) - GP-to-LSOA patient registration matrices
 - [population_estimates](datasets/population_estimates/) - Mid-year population estimates

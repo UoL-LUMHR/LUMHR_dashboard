@@ -8,7 +8,7 @@ This dataset has been filtered for the **435 Lower Layer Super Output Areas (202
 * **Source**: [Ministry of Housing, Communities & Local Government - English Indices of Deprivation 2025](https://www.gov.uk/government/statistics/english-indices-of-deprivation-2025)
 * **Source File**: `File_1_IoD2025_Index_of_Multiple_Deprivation.xlsx` (Sheet: `IMD25`)
 * **Local Source Path**: `scripts/utils/source_data/indices_of_deprivation_imd/2025/File_1_IoD2025_Index_of_Multiple_Deprivation.xlsx`
-* **Boundary Reference**: [`datasets/lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson`](../../lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson)
+* **Boundary Reference**: [`datasets/lsoa/lower-super-output-areas-2021-5RrVTw.geojson`](../../lsoa/lower-super-output-areas-2021-5RrVTw.geojson)
 
 ## Files in this Directory
 * `lincolnshire_imd_2025_lsoa.csv` — Full filtered CSV containing all 435 Lincolnshire 2021 LSOAs.

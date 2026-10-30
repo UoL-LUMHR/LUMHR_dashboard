@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Lincolnshire Mental Health Need Index | LUMHR{% endblock %}
+{% block title %}Mental Health Need Index | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
 
 {% block content %}
@@ -11,10 +11,10 @@
       <h1>Mental Health Need Index</h1>
       <button class="sidebar-close-btn" id="sidebar_close_btn" type="button" title="Close Controls">&times;</button>
     </div>
-    <p class="muted">Adjust weights to recalculate LSOA need indices.</p>
+    <p class="muted">Choose a geographic area and adjust weights to recalculate LSOA need indices.</p>
 
     <div class="quick-actions-bar">
-      <button class="btn-action-sm" id="btn_reset_weights" type="button" title="Reset all 4 indicator weights equally">↺ Reset Weights (25% each)</button>
+      <button class="btn-action-sm" id="btn_reset_weights" type="button" title="Reset all indicator weights equally">↺ Reset Weights (Equal)</button>
     </div>
 
     <details class="control">
@@ -33,8 +33,10 @@
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Need Index:</strong></p>
       <ul class="muted" style="margin-top:0; padding-left:1.1rem;">
         <li>Depression prevalence, SMI prevalence, antidepressant items per patient, SAMHI, and the public DLA/PIP rates are min-max normalised to [0,1].</li>
-        <li>Need Index is a weighted six-indicator composite; the DLA and PIP rates are separately weighted need signals.</li>
+        <li>Antidepressant items per patient uses registrations linked to practices with a May prescribing row; each LSOA popup reports the share of registrations covered. Missing practice rows are excluded from that rate, not treated as zero.</li>
+        <li>Need Index is a weighted composite of up to six indicators; the DLA and PIP rates are separately weighted need signals.</li>
         <li>The DLA/PIP rates are public-data indicators and are not official SAMHI components.</li>
+        <li>A DWP value suppressed in the source is shown as “Suppressed in DWP source” and is unavailable to the index.</li>
         <li>The default DLA/PIP snapshot is 2025, so scores are current public-data composites rather than temporally matched historical SAMHI values.</li>
       </ul>
     </details>
@@ -43,14 +45,27 @@
       <summary><strong>Data Sources</strong></summary>
       <ul class="muted" style="margin-top:0.6rem; padding-left:1.1rem;">
         <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/patients-registered-at-a-gp-practice/july-2026" target="_blank" rel="noopener noreferrer">GP Patient Registration</a></li>
+        <li>For Derbyshire, Parkfields Surgery registration weights use the January 2026 England extract where the July 2026 figures mismatch; affected LSOA popups identify the January count used.</li>
         <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/quality-and-outcomes-framework-achievement-prevalence-and-exceptions-data/2024-25" target="_blank" rel="noopener noreferrer">QOF Depression and SMI prevalence</a></li>
-        <li><a href="https://openprescribing.net/analyse/#org=practice&orgIds=71E&numIds=4.3&denom=nothing&selectedTab=map" target="_blank" rel="noopener noreferrer">Antidepressant items per patient</a></li>
+        <li><a href="https://openprescribing.net/" target="_blank" rel="noopener noreferrer">OpenPrescribing practice-level antidepressant data (May 2026; Bassetlaw included for Nottinghamshire)</a></li>
         <li><a href="https://pldr.org/dataset/small-area-mental-health-index-samhi-2noyv" target="_blank" rel="noopener noreferrer">SAMHI</a></li>
         <li><a href="https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates" target="_blank" rel="noopener noreferrer">LSOA Mid-Year Population Estimates (Mid-2024 SAPE, ONS)</a></li>
         <li><a href="https://stat-xplore.dwp.gov.uk/" target="_blank" rel="noopener noreferrer">DWP Stat-Xplore</a> - DLA/PIP mental-health and learning-difficulty claimant snapshots data.</li>
       </ul>
     </details>
 
+    <div class="control">
+      <label for="geographic_area"><strong>Geographic Area</strong></label>
+      <select id="geographic_area" style="width:100%; margin-top:.35rem;">
+        <option value="lincolnshire" selected>Lincolnshire</option>
+        <option value="north_lincolnshire">North Lincolnshire</option>
+        <option value="north_east_lincolnshire">North East Lincolnshire</option>
+        <option value="greater_lincolnshire">Greater Lincolnshire</option>
+        <option value="nottinghamshire">Nottinghamshire</option>
+        <option value="derbyshire">Derbyshire</option>
+        <option value="lincolnshire_nottinghamshire_derbyshire">Lincolnshire, Nottinghamshire and Derbyshire</option>
+      </select>
+    </div>
     <h2 style="font-size: 1rem; font-weight: 700; margin: 0.6rem 0 0.35rem; color: var(--text);">Weights:</h2>
 
     <div class="control">
@@ -123,17 +138,12 @@
 
     <div class="legend" id="status">Loading map and initial scores...</div>
 
-    <div class="legend" style="margin-top:0.6rem;">
-      The GP registration data includes out-of-Lincolnshire LSOAs that are not in the boundary file.
-      Distinct out-of-area LSOAs: {{ out_of_area_lsoa_count_fmt }}.
-      Patient records in those LSOAs: {{ out_of_area_patients_fmt }}.
-      They are retained in GP allocation weights but excluded from Lincolnshire map polygons.
-    </div>
+    <div class="legend" id="out_of_area_note" role="status" style="margin-top:0.6rem;"></div>
 
     <div class="legend" style="margin-top:0.75rem;">
       &copy; 2026 <a href="https://www.lincoln.ac.uk/" target="_blank" rel="noopener noreferrer">University of Lincoln</a><br>
       <a href="https://lumhr.org.uk/" target="_blank" rel="noopener noreferrer">Lincolnshire Unit for Mental Health Research (LUMHR)</a><br>
-      Lincolnshire Mental Health Need Index v1.0
+      Mental Health Need Index v1.0
     </div>
   </aside>
 
@@ -148,7 +158,8 @@
 
 {% block scripts %}
 <script>
-  const geojsonUrl = "/datasets/{{ geojson_rel_path }}";
+  const geojsonByScope = {{ geojson_by_scope | tojson }};
+  let currentScope = "lincolnshire";
 
   let map;
   let geojsonLayer;
@@ -156,6 +167,7 @@
   window.lumhrExportDataBounds = () => geojsonLayer ? geojsonLayer.getBounds() : null;
 
   let gpLayer;
+  let areaLoadVersion = 0;
   let needLayerScores = {};
   let lsoaDetails = {};
   let samhiLegendLabel = "SAMHI Index (2022)";
@@ -168,7 +180,7 @@
   const sliderIds = ["dep", "smi", "prescribing", "samhi", "dla", "pip"];
 
   function getCode(feature) {
-    return feature?.properties?.CODE ?? feature?.properties?.LSOA_CODE ?? null;
+    return feature?.properties?.LSOA21CD ?? feature?.properties?.CODE ?? feature?.properties?.LSOA_CODE ?? null;
   }
 
   function getActiveLayerScores() {
@@ -194,7 +206,10 @@
   function formatNeedTooltipValue(value, layerKey = currentLayerKey) {
     const num = Number(value);
     if (!Number.isFinite(num)) return "N/A";
-    if (["Depression_Prevalence", "SMI_Prevalence", "Pct_65plus", "GP_Registration_Rate_Pct", "DWP_DLA_Rate_Pct", "DWP_PIP_Rate_Pct"].includes(layerKey)) {
+    if (["Depression_Prevalence", "SMI_Prevalence"].includes(layerKey)) {
+      return `${(num * 100).toFixed(1)}%`;
+    }
+    if (["Pct_65plus", "GP_Registration_Rate_Pct", "DWP_DLA_Rate_Pct", "DWP_PIP_Rate_Pct"].includes(layerKey)) {
       return `${num.toFixed(1)}%`;
     }
     return num.toFixed(4);
@@ -248,9 +263,15 @@
     };
   }
 
-  function formatLegendNumber(value) {
+  function formatLegendNumber(value, layerKey = currentLayerKey) {
     if (value === null || value === undefined || !Number.isFinite(value)) {
       return "N/A";
+    }
+    if (["Depression_Prevalence", "SMI_Prevalence"].includes(layerKey)) {
+      return `${(value * 100).toFixed(1)}%`;
+    }
+    if (["Pct_65plus", "GP_Registration_Rate_Pct", "DWP_DLA_Rate_Pct", "DWP_PIP_Rate_Pct"].includes(layerKey)) {
+      return `${value.toFixed(1)}%`;
     }
     return Math.abs(value) >= 100 ? value.toFixed(2) : value.toFixed(4);
   }
@@ -322,13 +343,19 @@
     const rawTotal = dep + smi + prescribing + samhi + dla + pip;
     document.getElementById("weight_total").textContent = `Weight points total: ${rawTotal.toFixed(1)}`;
 
-    const normDen = rawTotal > 0 ? rawTotal : 6;
-    const normDep = rawTotal > 0 ? dep / normDen : (1 / 6);
-    const normSmi = rawTotal > 0 ? smi / normDen : (1 / 6);
-    const normPrescribing = rawTotal > 0 ? prescribing / normDen : (1 / 6);
-    const normSamhi = rawTotal > 0 ? samhi / normDen : (1 / 6);
-    const normDla = rawTotal > 0 ? dla / normDen : (1 / 6);
-    const normPip = rawTotal > 0 ? pip / normDen : (1 / 6);
+    const hasSmi = true;
+    const smiSlider = document.getElementById("smi");
+    smiSlider.disabled = !hasSmi;
+    smiSlider.title = hasSmi ? "" : "LSOA-level SMI data are available only for Lincolnshire.";
+    const availableTotal = hasSmi ? rawTotal : rawTotal - smi;
+    const availableCount = hasSmi ? 6 : 5;
+    const normDen = availableTotal > 0 ? availableTotal : availableCount;
+    const normDep = availableTotal > 0 ? dep / normDen : (1 / availableCount);
+    const normSmi = hasSmi ? (availableTotal > 0 ? smi / normDen : (1 / availableCount)) : 0;
+    const normPrescribing = availableTotal > 0 ? prescribing / normDen : (1 / availableCount);
+    const normSamhi = availableTotal > 0 ? samhi / normDen : (1 / availableCount);
+    const normDla = availableTotal > 0 ? dla / normDen : (1 / availableCount);
+    const normPip = availableTotal > 0 ? pip / normDen : (1 / availableCount);
 
     document.getElementById("effective_weights").textContent =
       `Effective Need Index weights: Depression ${(normDep * 100).toFixed(1)}% | ` +
@@ -345,6 +372,13 @@
       const code = getCode(feature) ?? "Unknown";
       const name = feature?.properties?.NAME ?? "";
       const detail = lsoaDetails[code] || {};
+      const publicSamhi3Year = document.getElementById("public_samhi3_year")?.value || 2025;
+      const publicSamhi3Coverage = detail.public_samhi3_components !== null && detail.public_samhi3_components !== undefined
+        ? ` (${Math.round(detail.public_samhi3_components)}/3 components)`
+        : "";
+      const pipRateDisplay = detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined
+        ? detail.dwp_pip_rate_pct.toFixed(2) + "%"
+        : (detail.dwp_pip_source_status || "N/A");
 
       let popupHtml =
         `<strong>LSOA:</strong> ${code}<br>` +
@@ -354,13 +388,15 @@
         `<strong>Depression Prevalence (%):</strong> ${detail.depression_prevalence_pct !== null && detail.depression_prevalence_pct !== undefined ? detail.depression_prevalence_pct.toFixed(2) : "N/A"}<br>` +
         `<strong>SMI Prevalence (%):</strong> ${detail.smi_prevalence_pct !== null && detail.smi_prevalence_pct !== undefined ? detail.smi_prevalence_pct.toFixed(2) : "N/A"}<br>` +
         `<strong>Antidepressant Items Per Patient:</strong> ${detail.antidepressant_items_per_patient !== null && detail.antidepressant_items_per_patient !== undefined ? detail.antidepressant_items_per_patient.toFixed(4) : "N/A"}<br>` +
+        `<strong>Antidepressant practice data coverage:</strong> ${detail.antidepressant_coverage_pct !== null && detail.antidepressant_coverage_pct !== undefined ? detail.antidepressant_coverage_pct.toFixed(1) + "% of registered patients" : "N/A"}<br>` +
         `<strong>${samhiLegendLabel}:</strong> ${detail.samhi_selected !== null && detail.samhi_selected !== undefined ? detail.samhi_selected.toFixed(4) : "N/A"}<br>` +
+        `<strong>Public SAMHI-3 proxy (${publicSamhi3Year}):</strong> ${detail.public_samhi3_proxy !== null && detail.public_samhi3_proxy !== undefined ? detail.public_samhi3_proxy.toFixed(4) : "N/A"}${publicSamhi3Coverage}<br>` +
         `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : "N/A"}<br>` +
-        `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : "N/A"}`;
+        `<strong>DWP PIP rate:</strong> ${pipRateDisplay}`;
 
       if (detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined) {
         popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : "N/A"}` +
-          `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : "N/A"}`;
+          `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : (detail.dwp_pip_source_status || "N/A")}`;
         if (detail.dwp_source) popupHtml += `<br><strong>DWP source:</strong> ${detail.dwp_source}`;
       }
 
@@ -372,6 +408,15 @@
           `<strong>Older Adults 65+ (Estimate):</strong> ${detail.ons_pop_65plus !== null && detail.ons_pop_65plus !== undefined ? Math.round(detail.ons_pop_65plus).toLocaleString() : "N/A"}${detail.pct_65plus !== null && detail.pct_65plus !== undefined ? ` (${detail.pct_65plus.toFixed(1)}%)` : ""}<br>` +
           `<strong>GP Registered Patients:</strong> ${detail.gp_registered_patients !== null && detail.gp_registered_patients !== undefined ? Math.round(detail.gp_registered_patients).toLocaleString() : "N/A"}<br>` +
           `<strong>GP Registration Coverage (%):</strong> ${detail.gp_registration_rate_pct !== null && detail.gp_registration_rate_pct !== undefined ? detail.gp_registration_rate_pct.toFixed(1) + "%" : "N/A"}`;
+
+        if (detail.parkfields_jan_2026_patients !== null && detail.parkfields_jan_2026_patients !== undefined) {
+          popupHtml +=
+            `<div style="margin-top:7px; padding:6px 8px; border-left:3px solid #c27a00; background:#fff7e6;">` +
+            `<strong>Registration data note:</strong> Parkfields Surgery's January 2026 count ` +
+            `(${Math.round(detail.parkfields_jan_2026_patients).toLocaleString()}) is used here because its July 2026 count was ` +
+            `${Math.round(detail.parkfields_july_2026_patients || 0).toLocaleString()}.` +
+            `</div>`;
+        }
 
         if (detail.list_inflation_est && detail.list_inflation_est > 0) {
           popupHtml += `<br><strong>Net Excess GP Registrations:</strong> +${Math.round(detail.list_inflation_est).toLocaleString()}`;
@@ -385,13 +430,16 @@
     });
   }
 
-  async function loadGpLayer() {
-    gpLayer = L.layerGroup();
-    const resp = await fetch("/api/gp_locations");
+  async function loadGpLayer(requestVersion = areaLoadVersion) {
+    const requestedScope = currentScope;
+    const resp = await fetch(`/api/gp_locations?scope=${encodeURIComponent(requestedScope)}`);
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
     if (!resp.ok) {
       return;
     }
     const markers = await resp.json();
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
+    const nextLayer = L.layerGroup();
 
     const gpIcon = L.divIcon({
       className: "gp-pin-icon",
@@ -406,9 +454,13 @@
         icon: gpIcon,
         riseOnHover: true
       });
+      const mapDataNote = gp.map_data_note
+        ? `<div style="margin:7px 0; padding:7px 9px; border-left:3px solid #c27a00; background:#fff7e6;"><strong>Map data note:</strong> ${gp.map_data_note}</div>`
+        : "";
       const popup =
         `<strong>${gp.practice_name || "Unknown Practice"}</strong><br>` +
         `<strong>Code:</strong> ${gp.practice_code || "N/A"}<br>` +
+        mapDataNote +
         `<strong>Total Registered Patients:</strong> ${gp.patients !== null ? Math.round(gp.patients).toLocaleString() : "N/A"}<br><br>` +
         `<hr style="margin:6px 0;">` +
         `<strong>Depression Register (2024-25):</strong> ${gp.dep_register !== null ? Math.round(gp.dep_register).toLocaleString() : "N/A"}<br>` +
@@ -423,8 +475,11 @@
         `<strong>Avg Physical Health Review Rate:</strong> ${gp.physical_health_review_avg_pct !== null ? gp.physical_health_review_avg_pct.toFixed(2) + "%" : "N/A"}<br>` +
         `<strong>Exception Rate (Overall PCA):</strong> ${gp.exception_rate_pct !== null ? gp.exception_rate_pct.toFixed(2) + "%" : "N/A"}`;
       marker.bindPopup(popup);
-      gpLayer.addLayer(marker);
+      nextLayer.addLayer(marker);
     }
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
+    if (gpLayer) map.removeLayer(gpLayer);
+    gpLayer = nextLayer;
   }
 
   function syncGpLayerVisibility() {
@@ -432,7 +487,9 @@
       return;
     }
     const checkbox = document.getElementById("map_show_gp_locations");
-    const show = checkbox ? checkbox.checked : true;
+    const available = true;
+    if (checkbox) checkbox.disabled = !available;
+    const show = available && (checkbox ? checkbox.checked : true);
     if (show) {
       gpLayer.addTo(map);
     } else {
@@ -484,8 +541,8 @@
         }[currentLayerKey] || "Map Layer";
 
     titleEl.textContent = layerLabel;
-    minEl.textContent = formatLegendNumber(minScore);
-    maxEl.textContent = formatLegendNumber(maxScore);
+    minEl.textContent = formatLegendNumber(minScore, currentLayerKey);
+    maxEl.textContent = formatLegendNumber(maxScore, currentLayerKey);
   }
 
   function addMapLegendControl() {
@@ -502,7 +559,7 @@
         <div style="font-weight:700; margin-bottom:6px;">Map Layers</div>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Need_Index" checked> Need Index</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Depression_Prevalence"> Depression Prevalence (%)</label>
-        <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="SMI_Prevalence"> SMI Prevalence (%)</label>
+        <label id="smi_radio_label" style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="SMI_Prevalence"> SMI Prevalence (%)</label>
         <label style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Antidepressant_Items_Per_Patient"> Antidepressant Items / Patient</label>
         <label id="samhi_radio_label" style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="SAMHI_Selected"> ${samhiLegendLabel}</label>
         <label id="public_samhi3_radio_label" style="display:block; margin-bottom:4px;"><input type="radio" name="map_metric" value="Public_SAMHI3_Proxy"> Public SAMHI-3 proxy (2025)</label>
@@ -523,8 +580,8 @@
         </div>
         <div style="border-top:1px solid #e4ecef; padding-top:8px; margin-top:6px;">
           <div style="font-weight:600; margin-bottom:4px; font-size:12px;">Filter Area Classification</div>
-          <label style="display:block; margin-bottom:3px; font-size:12px; cursor:pointer;"><input id="map_show_urban" type="checkbox" checked> Show Urban LSOAs (236)</label>
-          <label style="display:block; font-size:12px; cursor:pointer;"><input id="map_show_rural" type="checkbox" checked> Show Rural LSOAs (199)</label>
+          <label style="display:block; margin-bottom:3px; font-size:12px; cursor:pointer;"><input id="map_show_urban" type="checkbox" checked> Show Urban LSOAs</label>
+          <label style="display:block; font-size:12px; cursor:pointer;"><input id="map_show_rural" type="checkbox" checked> Show Rural LSOAs</label>
         </div>
         <div style="border-top:1px solid #e4ecef; padding-top:8px; margin-top:6px;">
           <label for="map_opacity_slider" style="display:block; font-weight:600; margin-bottom:4px;">Overlay Transparency</label>
@@ -604,7 +661,8 @@
     }
   }
 
-  async function updateMap() {
+  async function updateMap(requestVersion = areaLoadVersion) {
+    const requestedScope = currentScope;
     const dep = Number(document.getElementById("dep").value);
     const smi = Number(document.getElementById("smi").value);
     const prescribing = Number(document.getElementById("prescribing").value);
@@ -616,25 +674,34 @@
 
     const params = new URLSearchParams({
       dep: dep.toString(),
-      smi: smi.toString(),
+      smi: (requestedScope === "lincolnshire" ? smi : 0).toString(),
       prescribing: prescribing.toString(),
       samhi: samhi.toString(),
       dla: dla.toString(),
       pip: pip.toString(),
       samhi_year: samhiYear.toString(),
       public_samhi3_year: publicSamhi3Year.toString(),
+      scope: requestedScope,
     });
 
     const resp = await fetch(`/api/need_scores?${params.toString()}`);
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
     if (!resp.ok) {
       document.getElementById("status").textContent = "Failed to fetch need scores.";
       return;
     }
 
     const payload = await resp.json();
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
     needLayerScores = payload.layers || {};
     lsoaDetails = payload.lsoa_details || {};
     samhiLegendLabel = payload?.meta?.samhi_label || samhiLegendLabel;
+    document.getElementById("out_of_area_note").textContent = payload?.meta?.out_of_area_note || "";
+
+    const smiRadio = document.querySelector('#smi_radio_label input[name="map_metric"]');
+    if (smiRadio) {
+      smiRadio.disabled = false;
+    }
 
     updateSamhiLegendLabel();
     applyActiveLayerStyle();
@@ -688,6 +755,28 @@
 
   const lincolnshireBounds = [[52.64022, -0.82065], [53.61637, 0.35797]];
 
+  async function loadGeoJSON(requestVersion = areaLoadVersion) {
+    const requestedScope = currentScope;
+    const relativePath = geojsonByScope[requestedScope];
+    if (!relativePath) throw new Error(`No boundary file configured for ${requestedScope}`);
+    const response = await fetch(`/datasets/${relativePath}`);
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
+    if (!response.ok) throw new Error(`Failed to load boundary file for ${requestedScope}`);
+    const geojson = await response.json();
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
+    if (geojsonLayer) map.removeLayer(geojsonLayer);
+    geojsonLayer = L.geoJSON(geojson, {
+      style: styleFeature,
+      onEachFeature: (feature, layer) => {
+        const code = getCode(feature) ?? "Unknown";
+        const name = feature?.properties?.LSOA21NM ?? feature?.properties?.NAME ?? "";
+        layer.bindTooltip(lsoaTooltipText(code, name));
+      }
+    }).addTo(map);
+    const bounds = geojsonLayer.getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { animate: false, padding: [12, 12] });
+  }
+
   async function init() {
     setupMobileDrawer();
     setupResetWeights();
@@ -702,17 +791,7 @@
       attribution: "&copy; OpenStreetMap contributors"
     }).addTo(map);
 
-    const resp = await fetch(geojsonUrl);
-    const geojson = await resp.json();
-
-    geojsonLayer = L.geoJSON(geojson, {
-      style: styleFeature,
-      onEachFeature: (feature, layer) => {
-        const code = getCode(feature) ?? "Unknown";
-        const name = feature?.properties?.NAME ?? "";
-        layer.bindTooltip(lsoaTooltipText(code, name));
-      }
-    }).addTo(map);
+    await loadGeoJSON();
 
     addMapLegendControl();
     await loadGpLayer();
@@ -736,6 +815,23 @@
         await updateMap();
       });
     }
+
+    document.getElementById("geographic_area").addEventListener("change", async (event) => {
+      currentScope = event.target.value;
+      const requestVersion = ++areaLoadVersion;
+      updateWeightText();
+      try {
+        await loadGeoJSON(requestVersion);
+        if (requestVersion !== areaLoadVersion) return;
+        await loadGpLayer(requestVersion);
+        if (requestVersion !== areaLoadVersion) return;
+        syncGpLayerVisibility();
+        await updateMap(requestVersion);
+      } catch (error) {
+        if (requestVersion !== areaLoadVersion) return;
+        document.getElementById("status").textContent = error.message || "Failed to load geographic area.";
+      }
+    });
 
     updateWeightText();
     await updateMap();

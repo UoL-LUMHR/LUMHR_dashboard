@@ -14,7 +14,7 @@ PROJECT_ROOT = BASE_DIR.parent.parent
 GEOJSON_PATH = (
     PROJECT_ROOT
     / "datasets"
-    / "lincolnshire_lsoa"
+    / "lsoa"
     / "lower-super-output-areas-2021-5RrVTw.geojson"
 )
 OUTPUT_DIR = PROJECT_ROOT / "datasets" / "revekland"

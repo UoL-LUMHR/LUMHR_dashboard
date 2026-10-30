@@ -69,7 +69,7 @@ def load_raw_data(project_root: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
     lookup_path = (
         project_root
         / "datasets"
-        / "lincolnshire_lsoa"
+        / "lsoa"
         / "lsoa_2011_to_2021_lookup"
         / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
     )

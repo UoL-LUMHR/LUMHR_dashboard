@@ -5,8 +5,8 @@ import geopandas as gpd
 # Input / Output
 # -----------------------------
 samhi_csv = "../../datasets/samhi/samhi_21_01_v5.00_2011_2022_LSOA.csv"
-lookup_csv = "../../datasets/lincolnshire_lsoa/lsoa_2011_to_2021_lookup/LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
-lincolnshire_geojson = "../../datasets/lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson"
+lookup_csv = "../../datasets/lsoa/lsoa_2011_to_2021_lookup/LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+lincolnshire_geojson = "../../datasets/lsoa/lower-super-output-areas-2021-5RrVTw.geojson"
 output_csv = "../../datasets/samhi/samhi_lincolnshire_2021_lsoa.csv"
 
 # Load Lincolnshire 2021 LSOAs

@@ -6,9 +6,18 @@ from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
 
+from core.allocation import (
+    allocate_registers_to_lsoa,
+    build_gp_master,
+    build_gp_marker_df,
+    prepare_depression,
+    prepare_prescribing,
+    prepare_smi,
+)
 from core.need_index import apply_need_index
 from core.access_index import apply_access_index
 from core.rural_risk_index import apply_rural_risk_index
@@ -19,8 +28,37 @@ app = Flask(__name__, template_folder="templates")
 
 BASE_DIR = resolve_base_dir(Path(__file__))
 DATASETS_DIR = BASE_DIR / "datasets"
-GEOJSON_REL_PATH = "lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson"
-ENGLAND_GEOJSON_REL_PATH = "england_lsoa/Lower_layer_Super_Output_Areas_December_2021_Boundaries_EW_BSC_V4_6894679968818356315.geojson"
+GEOJSON_REL_PATH = "lsoa/lower-super-output-areas-2021-5RrVTw.geojson"
+ENGLAND_GEOJSON_REL_PATH = "lsoa/england_lsoa_2021.geojson"
+PUBLIC_SAMHI3_GEOJSON_PATHS = {
+    "lincolnshire": GEOJSON_REL_PATH,
+    "north_lincolnshire": "lsoa/north_lincolnshire_lsoa_2021.geojson",
+    "north_east_lincolnshire": "lsoa/north_east_lincolnshire_lsoa_2021.geojson",
+    "greater_lincolnshire": "lsoa/greater_lincolnshire_lsoa_2021.geojson",
+    "nottinghamshire": "lsoa/nottinghamshire_lsoa_2021.geojson",
+    "derbyshire": "lsoa/derbyshire_lsoa_2021.geojson",
+    "lincolnshire_nottinghamshire_derbyshire": "lsoa/lincolnshire_nottinghamshire_derbyshire_lsoa_2021.geojson",
+    "national": ENGLAND_GEOJSON_REL_PATH,
+}
+NEED_INDEX_GEOJSON_PATHS = {
+    "lincolnshire": GEOJSON_REL_PATH,
+    "north_lincolnshire": "lsoa/north_lincolnshire_lsoa_2021.geojson",
+    "north_east_lincolnshire": "lsoa/north_east_lincolnshire_lsoa_2021.geojson",
+    "greater_lincolnshire": "lsoa/greater_lincolnshire_lsoa_2021.geojson",
+    "nottinghamshire": "lsoa/nottinghamshire_lsoa_2021.geojson",
+    "derbyshire": "lsoa/derbyshire_lsoa_2021.geojson",
+    "lincolnshire_nottinghamshire_derbyshire": "lsoa/lincolnshire_nottinghamshire_derbyshire_lsoa_2021.geojson",
+}
+AREA_COMPONENT_SCOPES = {
+    "lincolnshire": ["lincolnshire"],
+    "north_lincolnshire": ["north_lincolnshire"],
+    "north_east_lincolnshire": ["north_east_lincolnshire"],
+    "greater_lincolnshire": ["lincolnshire", "north_lincolnshire", "north_east_lincolnshire"],
+    "nottinghamshire": ["nottinghamshire"],
+    "derbyshire": ["derbyshire"],
+    "lincolnshire_nottinghamshire_derbyshire": ["lincolnshire", "nottinghamshire", "derbyshire"],
+}
+SPECIAL_ALLOCATION_PRACTICE_CODES = {"C84720"}  # NOTSPAR remains a marker, not an area-level contributor.
 SAMHI_FORECAST_DATA_DIR = DATASETS_DIR / "samhi_forecast"
 PUBLIC_SAMHI3_DATA_DIR = DATASETS_DIR / "public_samhi3"
 
@@ -56,7 +94,7 @@ def _read_public_dwp_august_counts(base_dir: Path) -> pd.DataFrame:
     Stat-Xplore exports here lets us retain both children when an LSOA11 was
     split during the 2021 geography revision.
     """
-    boundary_path = base_dir / "datasets" / "england_lsoa" / "Lower_layer_Super_Output_Areas_December_2021_Boundaries_EW_BSC_V4_6894679968818356315.geojson"
+    boundary_path = base_dir / "datasets" / "lsoa" / "england_lsoa_2021.geojson"
     filenames = {
         "dwp_dla_count": "DLA_claimants_mental_health_learning_difficulties_from_may_2018_lsoa.csv",
         "dwp_pip_count": "PIP_cases_with_entitlement_mental_health_learning_difficulties_from_2019_lsoa.csv",
@@ -116,6 +154,58 @@ def _read_public_dwp_august_counts(base_dir: Path) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=1)
+def _load_public_dwp_pip_suppression(base_dir_str: str) -> pd.DataFrame:
+    """Identify PIP counts explicitly suppressed in DWP's August exports."""
+    base_dir = Path(base_dir_str)
+    boundary_path = base_dir / "datasets" / "lsoa" / "england_lsoa_2021.geojson"
+    source_path = (
+        base_dir
+        / "datasets"
+        / "DWP_DLA_PIP_data"
+        / "PIP_cases_with_entitlement_mental_health_learning_difficulties_from_2019_lsoa.csv"
+    )
+    columns = ["LSOA_CODE", "year", "dwp_pip_source_status"]
+    if not boundary_path.exists() or not source_path.exists():
+        return pd.DataFrame(columns=columns)
+
+    with boundary_path.open(encoding="utf-8") as handle:
+        geojson = json.load(handle)
+    name_to_code = {
+        str(feature.get("properties", {}).get("LSOA21NM", "")).strip(): str(
+            feature.get("properties", {}).get("LSOA21CD", "")
+        ).strip()
+        for feature in geojson.get("features", [])
+        if str(feature.get("properties", {}).get("LSOA21NM", "")).strip()
+        and str(feature.get("properties", {}).get("LSOA21CD", "")).strip()
+    }
+    with source_path.open(encoding="utf-8-sig", newline="") as handle:
+        rows = list(csv.reader(handle))
+    header_idx = next((idx for idx, row in enumerate(rows) if row and row[0] == "Month"), None)
+    if header_idx is None:
+        return pd.DataFrame(columns=columns)
+    periods = {}
+    for idx, label in enumerate(rows[header_idx][1:], start=1):
+        try:
+            year = int(pd.to_datetime(str(label).strip(), format="%b-%y").year)
+        except (TypeError, ValueError):
+            continue
+        if year in DWP_AVAILABLE_YEARS and str(label).strip().startswith("Aug-"):
+            periods[idx] = year
+
+    suppressed = []
+    for row in rows[header_idx + 1:]:
+        if not row:
+            continue
+        code = name_to_code.get(str(row[0]).strip())
+        if not code:
+            continue
+        for idx, year in periods.items():
+            if idx < len(row) and row[idx].strip() == "..":
+                suppressed.append((code, year, "Suppressed in DWP source"))
+    return pd.DataFrame(suppressed, columns=columns).drop_duplicates(["LSOA_CODE", "year"])
+
+
+@lru_cache(maxsize=1)
 def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
     """Load public DWP DLA/PIP rates and convert LSOA11 to LSOA21 codes.
 
@@ -127,7 +217,7 @@ def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
     lookup_path = (
         Path(base_dir)
         / "datasets"
-        / "lincolnshire_lsoa"
+        / "lsoa"
         / "lsoa_2011_to_2021_lookup"
         / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
     )
@@ -290,6 +380,9 @@ def _attach_public_dwp_layer(scored: pd.DataFrame, year: int) -> pd.DataFrame:
     dwp = _load_public_dwp_panel(str(BASE_DIR))
     dwp = dwp[dwp["year"] == year].copy()
     dwp = dwp.drop(columns=["year"], errors="ignore")
+    pip_status = _load_public_dwp_pip_suppression(str(BASE_DIR))
+    pip_status = pip_status[pip_status["year"].eq(year)].drop(columns=["year"], errors="ignore")
+    dwp = dwp.merge(pip_status, on="LSOA_CODE", how="left")
     return scored.merge(dwp, on="LSOA_CODE", how="left")
 
 
@@ -358,15 +451,9 @@ def home_page() -> str:
 
 @app.get("/need_index")
 def need_index_page() -> str:
-    out_lsoa_count = len(BUNDLE["out_of_area_lsoa_codes"])
-    out_patients = int(round(float(BUNDLE["out_of_area_patients"])))
     return render_template(
         "need_index.html",
-        geojson_rel_path=GEOJSON_REL_PATH,
-        out_of_area_lsoa_count=out_lsoa_count,
-        out_of_area_lsoa_count_fmt=f"{out_lsoa_count:,}",
-        out_of_area_patients=out_patients,
-        out_of_area_patients_fmt=f"{out_patients:,}",
+        geojson_by_scope=NEED_INDEX_GEOJSON_PATHS,
     )
 
 
@@ -374,7 +461,7 @@ def need_index_page() -> str:
 def samhi_page() -> str:
     return render_template(
         "samhi.html",
-        geojson_rel_path=GEOJSON_REL_PATH,
+        geojson_by_scope=PUBLIC_SAMHI3_GEOJSON_PATHS,
         min_year=min(SAMHI_YEARS),
         max_year=max(SAMHI_YEARS),
         default_year=max(SAMHI_YEARS),
@@ -422,6 +509,10 @@ def dataset_files(filename: str):
 
 @app.get("/api/gp_locations")
 def gp_locations_api():
+    scope = str(request.args.get("scope", "lincolnshire") or "lincolnshire").strip().lower()
+    if scope not in NEED_INDEX_GEOJSON_PATHS:
+        scope = "lincolnshire"
+    marker_df = GP_MARKER_DF if scope == "lincolnshire" else _get_current_area_need_base(scope)["markers"]
     cols = [
         "PRACTICE_CODE",
         "Practice_Name",
@@ -443,17 +534,22 @@ def gp_locations_api():
         "DEP004_Pct",
         "Effective_LSOA",
     ]
-    available_cols = [c for c in cols if c in GP_MARKER_DF.columns]
-    out = GP_MARKER_DF[available_cols].copy()
+    available_cols = [c for c in cols if c in marker_df.columns]
+    out = marker_df[available_cols].copy()
     out["Lat"] = pd.to_numeric(out.get("Lat"), errors="coerce")
     out["Lon"] = pd.to_numeric(out.get("Lon"), errors="coerce")
-    out = out.dropna(subset=["Lat", "Lon"])
+    out = out.dropna(subset=["Lat", "Lon"]).drop_duplicates("PRACTICE_CODE", keep="first")
 
     markers: list[dict[str, object]] = []
     for row in out.to_dict(orient="records"):
         marker = {
             "practice_code": str(row.get("PRACTICE_CODE", "")),
             "practice_name": str(row.get("Practice_Name", "") or ""),
+            "map_data_note": (
+                "NOTSPAR is a Special Allocation Scheme practice. Its location and available practice data are shown here; its registrations and practice-level indicators are excluded from LSOA-wide map calculations and GP registration totals."
+                if str(row.get("PRACTICE_CODE", "")).strip() in SPECIAL_ALLOCATION_PRACTICE_CODES
+                else None
+            ),
             "lat": float(row["Lat"]),
             "lon": float(row["Lon"]),
             "patients": _num_or_none(row.get("NUMBER_OF_PATIENTS")),
@@ -499,17 +595,57 @@ def need_scores_api():
     if dwp_year not in DWP_AVAILABLE_YEARS:
         return jsonify({"error": f"dwp_year must be one of {DWP_AVAILABLE_YEARS}"}), 400
 
-    samhi_index_col, _ = get_samhi_columns(samhi_year)
-    if samhi_index_col not in LSOA_METRICS.columns:
-        return jsonify({"error": f"Missing SAMHI column: {samhi_index_col}"}), 400
+    scope = str(request.args.get("scope", "lincolnshire") or "lincolnshire").strip().lower()
+    if scope not in NEED_INDEX_GEOJSON_PATHS:
+        scope = "lincolnshire"
 
-    scored = _attach_public_dwp_layer(LSOA_METRICS, dwp_year)
-    public_samhi3 = _get_public_samhi3_df("lincolnshire")
-    if {"year", "LSOA21CD", "public_samhi3_proxy", "public_samhi3_n_components"}.issubset(public_samhi3.columns):
-        public_samhi3 = public_samhi3[public_samhi3["year"].eq(public_samhi3_year)][["LSOA21CD", "public_samhi3_proxy", "public_samhi3_n_components"]].copy()
+    samhi_index_col, _ = get_samhi_columns(samhi_year)
+    if scope == "lincolnshire":
+        if samhi_index_col not in LSOA_METRICS.columns:
+            return jsonify({"error": f"Missing SAMHI column: {samhi_index_col}"}), 400
+        scored = _attach_public_dwp_layer(LSOA_METRICS, dwp_year)
+        out_of_area_lsoa_count = len(BUNDLE["out_of_area_lsoa_codes"])
+        out_of_area_patients = int(round(float(BUNDLE["out_of_area_patients"])))
     else:
-        public_samhi3 = pd.DataFrame(columns=["LSOA21CD", "public_samhi3_proxy", "public_samhi3_n_components"])
-    public_samhi3 = public_samhi3.rename(columns={"LSOA21CD": "LSOA_CODE", "public_samhi3_proxy": "Public_SAMHI3_Proxy", "public_samhi3_n_components": "Public_SAMHI3_Components"})
+        scored = _get_current_area_need_metrics(scope, dwp_year)
+        area_data = _get_current_area_need_base(scope)
+        out_of_area_lsoa_count = area_data["out_of_area_lsoa_count"]
+        out_of_area_patients = area_data["out_of_area_patients"]
+
+    out_of_area_note = (
+        "GP registration data includes patients registered to practices in this area who live outside its map "
+        f"boundary. Distinct out-of-area LSOAs: {out_of_area_lsoa_count:,}. "
+        f"Patient records in those LSOAs: {out_of_area_patients:,}. "
+        "They are retained in GP allocation weights but excluded from the map polygons."
+    )
+
+    public_samhi3 = _get_public_samhi3_df(scope)
+    if {"year", "LSOA21CD", "public_samhi3_proxy", "public_samhi3_n_components"}.issubset(public_samhi3.columns):
+        proxy_columns = ["LSOA21CD", "public_samhi3_proxy", "public_samhi3_n_components"]
+        if "public_samhi3_proxy_2plus" in public_samhi3.columns:
+            proxy_columns.append("public_samhi3_proxy_2plus")
+        public_samhi3 = public_samhi3[
+            public_samhi3["year"].eq(public_samhi3_year)
+        ][proxy_columns].copy()
+        primary_proxy = pd.to_numeric(public_samhi3["public_samhi3_proxy"], errors="coerce")
+        fallback_proxy = pd.to_numeric(
+            public_samhi3.get("public_samhi3_proxy_2plus", pd.Series(np.nan, index=public_samhi3.index)),
+            errors="coerce",
+        )
+        public_samhi3["public_samhi3_partial"] = primary_proxy.isna() & fallback_proxy.notna()
+        public_samhi3["public_samhi3_proxy"] = primary_proxy.combine_first(fallback_proxy)
+    else:
+        public_samhi3 = pd.DataFrame(
+            columns=["LSOA21CD", "public_samhi3_proxy", "public_samhi3_n_components", "public_samhi3_partial"]
+        )
+    public_samhi3 = public_samhi3.rename(
+        columns={
+            "LSOA21CD": "LSOA_CODE",
+            "public_samhi3_proxy": "Public_SAMHI3_Proxy",
+            "public_samhi3_n_components": "Public_SAMHI3_Components",
+            "public_samhi3_partial": "Public_SAMHI3_Partial",
+        }
+    )
     scored = scored.merge(public_samhi3, on="LSOA_CODE", how="left")
     scored = apply_need_index(
         scored,
@@ -545,9 +681,11 @@ def need_scores_api():
         "Depression_Prevalence_Pct",
         "SMI_Prevalence_Pct",
         "Antidepressant_Items_Per_Patient",
+        "Antidepressant_Coverage_Pct",
         "SAMHI_Selected",
         "Public_SAMHI3_Proxy",
         "Public_SAMHI3_Components",
+        "Public_SAMHI3_Partial",
         "RUC21NM",
         "Urban_rural_flag",
         "ONS_Pop_Total_2024",
@@ -563,10 +701,13 @@ def need_scores_api():
         "dwp_pip_rate_pct",
         "dwp_dla_count",
         "dwp_pip_count",
+        "dwp_pip_source_status",
         "dwp_population_source_year",
         "dla_pip_source",
         "Registration_Gap_Est",
         "List_Inflation_Est",
+        "Parkfields_Jan_2026_Patients",
+        "Parkfields_July_2026_Patients",
     ]
     if lsoa_name_col:
         detail_cols.insert(1, lsoa_name_col)
@@ -584,9 +725,15 @@ def need_scores_api():
             "depression_prevalence_pct": _num_or_none(row.get("Depression_Prevalence_Pct")),
             "smi_prevalence_pct": _num_or_none(row.get("SMI_Prevalence_Pct")),
             "antidepressant_items_per_patient": _num_or_none(row.get("Antidepressant_Items_Per_Patient")),
+            "antidepressant_coverage_pct": _num_or_none(row.get("Antidepressant_Coverage_Pct")),
             "samhi_selected": _num_or_none(row.get("SAMHI_Selected")),
             "public_samhi3_proxy": _num_or_none(row.get("Public_SAMHI3_Proxy")),
             "public_samhi3_components": _num_or_none(row.get("Public_SAMHI3_Components")),
+            "public_samhi3_partial": (
+                bool(row.get("Public_SAMHI3_Partial"))
+                if pd.notna(row.get("Public_SAMHI3_Partial"))
+                else False
+            ),
             "ruc21nm": ruc_text,
             "urban_rural_flag": flag_text,
             "is_rural": "rural" in ruc_text.lower(),
@@ -601,8 +748,11 @@ def need_scores_api():
             "gp_registration_rate_pct": _num_or_none(row.get("GP_Registration_Rate_Pct")),
             "registration_gap_est": _num_or_none(row.get("Registration_Gap_Est")),
             "list_inflation_est": _num_or_none(row.get("List_Inflation_Est")),
+            "parkfields_jan_2026_patients": _num_or_none(row.get("Parkfields_Jan_2026_Patients")),
+            "parkfields_july_2026_patients": _num_or_none(row.get("Parkfields_July_2026_Patients")),
             "dwp_dla_rate_pct": _num_or_none(row.get("dwp_dla_rate_pct")),
             "dwp_pip_rate_pct": _num_or_none(row.get("dwp_pip_rate_pct")),
+            "dwp_pip_source_status": str(row.get("dwp_pip_source_status", "") or "") or None,
             "dwp_dla_count": _num_or_none(row.get("dwp_dla_count")),
             "dwp_pip_count": _num_or_none(row.get("dwp_pip_count")),
             "dwp_population_source_year": _num_or_none(row.get("dwp_population_source_year")),
@@ -621,7 +771,8 @@ def need_scores_api():
                 "dwp_year": dwp_year,
                 "dwp_label": f"DWP DLA and PIP rates ({dwp_year})",
                 "dwp_component_labels": {"dla": f"DLA rate ({dwp_year})", "pip": f"PIP rate ({dwp_year})"},
-                "dwp_population_vintage_note": "Complete rows use the panel's estimated 16–64 denominator. Where one benefit is disclosure-suppressed, the available component is retained with a 2024 ONS 18–64 fallback and marked in the source field; these are not official SAMHI components.",
+                "dwp_population_vintage_note": "The DWP PIP rate is unavailable where the source suppresses its claimant count; the popup identifies those rows. Available component counts use the selected panel denominator where possible and a marked 2024 ONS 18–64 fallback for partial rows.",
+                "out_of_area_note": out_of_area_note,
             },
         }
     )
@@ -939,8 +1090,223 @@ def access_gap_scores_api():
     )
 
 
+_SAMHI_AREA_METRICS_CACHE: dict[str, pd.DataFrame] = {}
+_NEED_DWP_PANEL_CACHE: pd.DataFrame | None = None
+
+
+def _get_samhi_area_metrics(scope: str = "lincolnshire") -> pd.DataFrame:
+    clean_scope = _normalise_public_samhi3_scope(scope)
+    if clean_scope == "lincolnshire":
+        return LSOA_METRICS
+    if clean_scope in _SAMHI_AREA_METRICS_CACHE:
+        return _SAMHI_AREA_METRICS_CACHE[clean_scope]
+
+    source_path = DATASETS_DIR / "samhi" / "samhi_21_01_v5.00_2011_2022_LSOA.csv"
+    lookup_path = (
+        DATASETS_DIR
+        / "lsoa"
+        / "lsoa_2011_to_2021_lookup"
+        / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+    )
+    if not source_path.exists() or not lookup_path.exists():
+        _SAMHI_AREA_METRICS_CACHE[clean_scope] = pd.DataFrame()
+        return _SAMHI_AREA_METRICS_CACHE[clean_scope]
+
+    source = pd.read_csv(source_path, low_memory=False)
+    source["lsoa11"] = source["lsoa11"].astype(str).str.strip()
+    lookup = pd.read_csv(
+        lookup_path,
+        usecols=["LSOA11CD", "LSOA21CD", "LSOA21NM", "LAD22NM"],
+        dtype=str,
+    ).rename(columns={"LSOA11CD": "lsoa11"})
+    for column in ["lsoa11", "LSOA21CD", "LSOA21NM", "LAD22NM"]:
+        lookup[column] = lookup[column].astype(str).str.strip()
+    lookup = lookup.drop_duplicates("LSOA21CD")
+    if clean_scope in PUBLIC_SAMHI3_SCOPE_LADS:
+        lookup = lookup[lookup["LAD22NM"].isin(PUBLIC_SAMHI3_SCOPE_LADS[clean_scope])]
+
+    samhi_columns = [
+        column
+        for year in SAMHI_YEARS
+        for column in (f"samhi_index.{year}", f"samhi_dec.{year}")
+        if column in source.columns
+    ]
+    area_metrics = lookup.merge(source[["lsoa11", *samhi_columns]], on="lsoa11", how="inner")
+    rural_path = DATASETS_DIR / "rural_urban_classification_2021_lsoa" / "Rural_Urban_Classification_(2021)_of_LSOAs_in_EW.csv"
+    if rural_path.exists():
+        rural = pd.read_csv(rural_path, usecols=["LSOA21CD", "RUC21NM", "Urban_rural_flag"], dtype=str)
+        rural["LSOA21CD"] = rural["LSOA21CD"].astype(str).str.strip()
+        area_metrics = area_metrics.merge(
+            rural.drop_duplicates("LSOA21CD"),
+            on="LSOA21CD",
+            how="left",
+        )
+    area_metrics = area_metrics.rename(columns={"LSOA21CD": "LSOA_CODE"})
+    _SAMHI_AREA_METRICS_CACHE[clean_scope] = area_metrics.drop_duplicates("LSOA_CODE", keep="last")
+    return _SAMHI_AREA_METRICS_CACHE[clean_scope]
+
+
+_CURRENT_AREA_NEED_BASE_CACHE: dict[str, dict[str, pd.DataFrame]] = {}
+
+
+def _get_current_area_need_base(scope: str) -> dict[str, pd.DataFrame]:
+    """Allocate 2024/25 practice QOF and May 2026 prescriptions to county LSOAs."""
+    if scope in _CURRENT_AREA_NEED_BASE_CACHE:
+        return _CURRENT_AREA_NEED_BASE_CACHE[scope]
+
+    scopes = AREA_COMPONENT_SCOPES[scope]
+    dep_parts = []
+    smi_parts = []
+    prescribing_parts = []
+    for part in scopes:
+        dep_path = DATASETS_DIR / "quality_outcomes_framework" / f"qof_depression_2425_{part}.csv"
+        smi_path = DATASETS_DIR / "quality_outcomes_framework" / f"qof_mental_health_2425_{part}.csv"
+        prescribing_path = DATASETS_DIR / "gp_prescribing_data" / f"need_index_antidepressant_items_per_gp_{part}_may_2026.csv"
+        for path in (dep_path, smi_path, prescribing_path):
+            if not path.exists():
+                raise FileNotFoundError(f"Required county Need Index input is missing: {path.name}")
+        dep_parts.append(pd.read_csv(dep_path, low_memory=False))
+        smi_parts.append(pd.read_csv(smi_path, low_memory=False))
+        prescribing_parts.append(pd.read_csv(prescribing_path, low_memory=False))
+
+    dep_raw = pd.concat(dep_parts, ignore_index=True).drop_duplicates("Practice Code", keep="last")
+    smi_raw = pd.concat(smi_parts, ignore_index=True).drop_duplicates("Practice Code", keep="last")
+    prescribing_raw = pd.concat(prescribing_parts, ignore_index=True).drop_duplicates("id", keep="last")
+    dep_df = prepare_depression(dep_raw)
+    smi_df = prepare_smi(smi_raw)
+    prescribing_df = prepare_prescribing(prescribing_raw)
+    gp_master = build_gp_master(dep_df, smi_df, prescribing_df)
+
+    # Keep all registered LSOAs in each area's practice denominator, including
+    # patients who live outside the selected map boundary.
+    mapping_path = (
+        DATASETS_DIR
+        / "patients_registered_gp_practice"
+        / f"{scope}_july_2026"
+        / "gp-reg-pat-prac-lsoa-all.csv"
+    )
+    mapping_df = pd.read_csv(mapping_path, low_memory=False)
+    mapping_df["PRACTICE_CODE"] = mapping_df["PRACTICE_CODE"].astype(str).str.strip()
+    mapping_df["LSOA_CODE"] = mapping_df["LSOA_CODE"].astype(str).str.strip()
+    mapping_df["NUMBER_OF_PATIENTS"] = pd.to_numeric(mapping_df["NUMBER_OF_PATIENTS"], errors="coerce")
+    mapping_df = mapping_df[
+        mapping_df["PRACTICE_CODE"].ne("")
+        & mapping_df["LSOA_CODE"].str.fullmatch(r"E\d{8}")
+        & mapping_df["NUMBER_OF_PATIENTS"].gt(0)
+    ].copy()
+    marker_mapping_df = mapping_df
+    allocation_mapping_df = mapping_df[
+        ~mapping_df["PRACTICE_CODE"].isin(SPECIAL_ALLOCATION_PRACTICE_CODES)
+    ].copy()
+    parkfields_january = mapping_df[
+        mapping_df.get("REGISTRATION_SOURCE_DATE", pd.Series(index=mapping_df.index, dtype=str))
+        .astype(str)
+        .eq("2026-01-01")
+    ]
+    if not parkfields_january.empty:
+        parkfields_by_lsoa = parkfields_january.groupby("LSOA_CODE", as_index=False).agg(
+            Parkfields_Jan_2026_Patients=("NUMBER_OF_PATIENTS", "sum"),
+            Parkfields_July_2026_Patients=("JULY_2026_NUMBER_OF_PATIENTS", "sum"),
+        )
+    else:
+        parkfields_by_lsoa = pd.DataFrame(
+            columns=["LSOA_CODE", "Parkfields_Jan_2026_Patients", "Parkfields_July_2026_Patients"]
+        )
+    practice_totals = allocation_mapping_df.groupby("PRACTICE_CODE")["NUMBER_OF_PATIENTS"].transform("sum")
+    allocation_mapping_df["Weight"] = (
+        allocation_mapping_df["NUMBER_OF_PATIENTS"] / practice_totals.replace(0, np.nan)
+    )
+    allocated, _ = allocate_registers_to_lsoa(allocation_mapping_df, gp_master)
+    area = _get_samhi_area_metrics(scope).copy()
+    area = area.merge(allocated, on="LSOA_CODE", how="left")
+    area = area.merge(parkfields_by_lsoa, on="LSOA_CODE", how="left")
+    pop_path = DATASETS_DIR / "population_estimates" / f"{scope}_lsoa_population_estimates_2024.csv"
+    population = pd.read_csv(pop_path, low_memory=False)
+    area = area.merge(population, on="LSOA_CODE", how="left", suffixes=("", "_population"))
+
+    locations = BUNDLE["gp_loc_df"]
+    geojson_path = DATASETS_DIR / NEED_INDEX_GEOJSON_PATHS[scope]
+    with geojson_path.open(encoding="utf-8") as stream:
+        geojson = json.load(stream)
+    centroid_rows = []
+    try:
+        from shapely.geometry import shape
+
+        for feature in geojson.get("features", []):
+            props = feature.get("properties", {})
+            code = props.get("LSOA21CD") or props.get("CODE") or props.get("LSOA_CODE")
+            if not code or not feature.get("geometry"):
+                continue
+            point = shape(feature["geometry"]).representative_point()
+            centroid_rows.append({"LSOA_CODE": str(code), "lat": point.y, "lon": point.x})
+    except ImportError:
+        centroid_rows = []
+    centroids = pd.DataFrame(centroid_rows, columns=["LSOA_CODE", "lat", "lon"])
+    markers = build_gp_marker_df(
+        locations,
+        gp_master,
+        marker_mapping_df,
+        centroids,
+        set(area["LSOA_CODE"].dropna().astype(str)),
+    )
+    # Allocation mappings include practices with only a small number of
+    # patients in the area, including practices whose own postcode is elsewhere.
+    # Keep those practices in the LSOA calculations, but only pin practices
+    # whose ODS postcode falls within this map boundary.
+    in_area_lsoas = set(area["LSOA_CODE"].dropna().astype(str))
+    local_practice_codes = set(
+        locations.loc[locations["GP_LSOA"].astype(str).isin(in_area_lsoas), "PRACTICE_CODE"]
+        .astype(str)
+        .str.strip()
+    )
+    if scope in {"nottinghamshire", "lincolnshire_nottinghamshire_derbyshire"}:
+        local_practice_codes |= set(SPECIAL_ALLOCATION_PRACTICE_CODES)
+    markers = markers[markers["PRACTICE_CODE"].astype(str).isin(local_practice_codes)].copy()
+    out_of_area = allocation_mapping_df[
+        ~allocation_mapping_df["LSOA_CODE"].isin(set(area["LSOA_CODE"].dropna().astype(str)))
+    ]
+    out_of_area_stats = {
+        "out_of_area_lsoa_count": int(out_of_area["LSOA_CODE"].nunique()),
+        "out_of_area_patients": int(round(float(out_of_area["NUMBER_OF_PATIENTS"].sum()))),
+    }
+    _CURRENT_AREA_NEED_BASE_CACHE[scope] = {
+        "metrics": area,
+        "markers": markers,
+        **out_of_area_stats,
+    }
+    return _CURRENT_AREA_NEED_BASE_CACHE[scope]
+
+
+def _get_current_area_need_metrics(scope: str, dwp_year: int) -> pd.DataFrame:
+    global _NEED_DWP_PANEL_CACHE
+    metrics = _get_current_area_need_base(scope)["metrics"].copy()
+    panel = _NEED_DWP_PANEL_CACHE
+    if panel is None:
+        panel_path = _dashboard_data_path(SAMHI_FORECAST_DATA_DIR, "three_component_panel.csv")
+        columns = [
+            "lsoa11", "year", "antidep_rate", "qof_dep_pct",
+            "dwp_dla_count", "dwp_pip_count", "dwp_dla_rate_pct", "dwp_pip_rate_pct",
+        ]
+        panel = pd.read_csv(panel_path, usecols=columns, low_memory=False) if panel_path.exists() else pd.DataFrame(columns=columns)
+        panel["lsoa11"] = panel["lsoa11"].astype(str).str.strip()
+        panel["year"] = pd.to_numeric(panel["year"], errors="coerce")
+        _NEED_DWP_PANEL_CACHE = panel
+    dwp = panel.loc[
+        panel["year"].eq(dwp_year),
+        ["lsoa11", "dwp_dla_rate_pct", "dwp_pip_rate_pct"],
+    ].drop_duplicates("lsoa11", keep="last")
+    metrics = metrics.merge(dwp, on="lsoa11", how="left")
+    pip_status = _load_public_dwp_pip_suppression(str(BASE_DIR))
+    pip_status = pip_status[pip_status["year"].eq(dwp_year)].drop(columns=["year"], errors="ignore")
+    return metrics.merge(pip_status, on="LSOA_CODE", how="left")
+
+
 @app.get("/api/samhi_scores")
 def samhi_scores_api():
+    scope = _normalise_public_samhi3_scope(request.args.get("scope", "lincolnshire"))
+    scope_metrics = _get_samhi_area_metrics(scope)
+    if scope_metrics.empty:
+        return jsonify({"error": "SAMHI data are unavailable for this geographic area."}), 404
     mode = str(request.args.get("mode", "Index")).strip()
     analysis_mode = str(request.args.get("analysis_mode", "Single Year")).strip()
 
@@ -964,10 +1330,10 @@ def samhi_scores_api():
     if not is_change:
         index_col, dec_col = get_samhi_columns(year)
         selected_col = index_col if mode_norm == "index" else dec_col
-        if selected_col not in LSOA_METRICS.columns:
+        if selected_col not in scope_metrics.columns:
             return jsonify({"error": f"Missing SAMHI column: {selected_col}"}), 400
 
-        lsoa_name_col = _get_lsoa_name_column(LSOA_METRICS)
+        lsoa_name_col = _get_lsoa_name_column(scope_metrics)
         cols = ["LSOA_CODE", selected_col]
         if lsoa_name_col:
             cols.insert(1, lsoa_name_col)
@@ -986,8 +1352,8 @@ def samhi_scores_api():
             "Registration_Gap_Est",
             "List_Inflation_Est",
         ]
-        cols.extend([c for c in pop_cols if c in LSOA_METRICS.columns])
-        out_df = LSOA_METRICS[cols].copy()
+        cols.extend([c for c in pop_cols if c in scope_metrics.columns])
+        out_df = scope_metrics[cols].copy()
         out_df = out_df.rename(columns={selected_col: "score"})
 
         details: dict[str, dict[str, object]] = {}
@@ -1033,11 +1399,11 @@ def samhi_scores_api():
     from_col = from_index_col if mode_norm == "index" else from_dec_col
     to_col = to_index_col if mode_norm == "index" else to_dec_col
 
-    missing = [col for col in [from_col, to_col] if col not in LSOA_METRICS.columns]
+    missing = [col for col in [from_col, to_col] if col not in scope_metrics.columns]
     if missing:
         return jsonify({"error": f"Missing SAMHI columns: {', '.join(missing)}"}), 400
 
-    lsoa_name_col = _get_lsoa_name_column(LSOA_METRICS)
+    lsoa_name_col = _get_lsoa_name_column(scope_metrics)
     cols = ["LSOA_CODE", from_col, to_col]
     if lsoa_name_col:
         cols.insert(1, lsoa_name_col)
@@ -1056,8 +1422,8 @@ def samhi_scores_api():
         "Registration_Gap_Est",
         "List_Inflation_Est",
     ]
-    cols.extend([c for c in pop_cols if c in LSOA_METRICS.columns])
-    out_df = LSOA_METRICS[cols].copy()
+    cols.extend([c for c in pop_cols if c in scope_metrics.columns])
+    out_df = scope_metrics[cols].copy()
     out_df["from_value"] = pd.to_numeric(out_df[from_col], errors="coerce")
     out_df["to_value"] = pd.to_numeric(out_df[to_col], errors="coerce")
     out_df["score"] = out_df["to_value"] - out_df["from_value"]
@@ -1306,14 +1672,44 @@ LINCOLNSHIRE_LADS_SET = {
     "West Lindsey",
 }
 
+NOTTINGHAMSHIRE_LADS_SET = {
+    "Ashfield", "Bassetlaw", "Broxtowe", "Gedling", "Mansfield",
+    "Newark and Sherwood", "Nottingham", "Rushcliffe",
+}
+DERBYSHIRE_LADS_SET = {
+    "Amber Valley", "Bolsover", "Chesterfield", "Derby", "Derbyshire Dales",
+    "Erewash", "High Peak", "North East Derbyshire", "South Derbyshire",
+}
+NORTH_LINCOLNSHIRE_LADS_SET = {"North Lincolnshire"}
+NORTH_EAST_LINCOLNSHIRE_LADS_SET = {"North East Lincolnshire"}
+GREATER_LINCOLNSHIRE_LADS_SET = (
+    LINCOLNSHIRE_LADS_SET | NORTH_LINCOLNSHIRE_LADS_SET | NORTH_EAST_LINCOLNSHIRE_LADS_SET
+)
+PUBLIC_SAMHI3_SCOPE_LADS = {
+    "lincolnshire": LINCOLNSHIRE_LADS_SET,
+    "north_lincolnshire": NORTH_LINCOLNSHIRE_LADS_SET,
+    "north_east_lincolnshire": NORTH_EAST_LINCOLNSHIRE_LADS_SET,
+    "greater_lincolnshire": GREATER_LINCOLNSHIRE_LADS_SET,
+    "nottinghamshire": NOTTINGHAMSHIRE_LADS_SET,
+    "derbyshire": DERBYSHIRE_LADS_SET,
+    "lincolnshire_nottinghamshire_derbyshire": (
+        LINCOLNSHIRE_LADS_SET | NOTTINGHAMSHIRE_LADS_SET | DERBYSHIRE_LADS_SET
+    ),
+}
+
+
+def _normalise_public_samhi3_scope(scope: str) -> str:
+    clean_scope = str(scope or "").strip().lower()
+    return clean_scope if clean_scope in {"national", *PUBLIC_SAMHI3_SCOPE_LADS} else "lincolnshire"
+
 
 def _get_public_samhi3_df(scope: str = "lincolnshire") -> pd.DataFrame:
     """Load dashboard-ready Public SAMHI-3 rows expanded to 2021 LSOAs."""
-    clean_scope = "lincolnshire" if scope == "lincolnshire" else "national"
+    clean_scope = _normalise_public_samhi3_scope(scope)
     if clean_scope in _PUBLIC_SAMHI3_CACHE:
         return _PUBLIC_SAMHI3_CACHE[clean_scope]
     path = _dashboard_data_path(PUBLIC_SAMHI3_DATA_DIR, "public_samhi3_web_predictions.csv")
-    lookup_path = DATASETS_DIR / "lincolnshire_lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+    lookup_path = DATASETS_DIR / "lsoa" / "lsoa_2011_to_2021_lookup" / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
     if not path.exists() or not lookup_path.exists():
         _PUBLIC_SAMHI3_CACHE[clean_scope] = pd.DataFrame()
         return _PUBLIC_SAMHI3_CACHE[clean_scope]
@@ -1325,8 +1721,8 @@ def _get_public_samhi3_df(scope: str = "lincolnshire") -> pd.DataFrame:
     for column in ["lsoa11", "LSOA21CD", "LSOA21NM", "LAD22NM"]:
         lookup[column] = lookup[column].astype(str).str.strip()
     lookup = lookup.drop_duplicates("LSOA21CD")
-    if clean_scope == "lincolnshire":
-        lookup = lookup[lookup["LAD22NM"].isin(LINCOLNSHIRE_LADS_SET)]
+    if clean_scope in PUBLIC_SAMHI3_SCOPE_LADS:
+        lookup = lookup[lookup["LAD22NM"].isin(PUBLIC_SAMHI3_SCOPE_LADS[clean_scope])]
     expanded = lookup.merge(df, on="lsoa11", how="inner")
     expanded = expanded.drop_duplicates(["LSOA21CD", "year"], keep="last")
     rural_path = DATASETS_DIR / "rural_urban_classification_2021_lsoa" / "Rural_Urban_Classification_(2021)_of_LSOAs_in_EW.csv"
@@ -1358,19 +1754,20 @@ def _get_public_samhi3_shap(model: str = "BayesianRidge") -> pd.DataFrame:
 
 
 def _get_ml_predictions_df(scope: str = "lincolnshire", experiment_set: int = 1) -> pd.DataFrame:
-    clean_scope = "lincolnshire" if scope == "lincolnshire" else "national"
+    clean_scope = _normalise_public_samhi3_scope(scope)
+    source_scope = "lincolnshire" if clean_scope == "lincolnshire" else "national"
     experiment_set = 2 if experiment_set == 2 else 1
     cache_key = (clean_scope, experiment_set)
     if cache_key not in _ML_PREDICTIONS_CACHE:
         suffix = "pre_covid_2018_2019" if experiment_set == 2 else "2020_2022"
         csv_path = _dashboard_data_path(
             SAMHI_FORECAST_DATA_DIR,
-            f"multimodal_predictions_{suffix}_{clean_scope}.csv",
+            f"multimodal_predictions_{suffix}_{source_scope}.csv",
         )
         if not csv_path.exists():
             csv_path = _dashboard_data_path(
                 SAMHI_FORECAST_DATA_DIR,
-                f"baseline_predictions_{suffix}_{clean_scope}.csv",
+                f"baseline_predictions_{suffix}_{source_scope}.csv",
             )
         if csv_path.exists():
             df = pd.read_csv(csv_path)
@@ -1379,7 +1776,7 @@ def _get_ml_predictions_df(scope: str = "lincolnshire", experiment_set: int = 1)
             # Expand 2011 predictions to all 2021 LSOA boundaries (handling split LSOAs)
             lookup_path = (
                 DATASETS_DIR
-                / "lincolnshire_lsoa"
+                / "lsoa"
                 / "lsoa_2011_to_2021_lookup"
                 / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
             )
@@ -1391,8 +1788,10 @@ def _get_ml_predictions_df(scope: str = "lincolnshire", experiment_set: int = 1)
                 lookup_df["LAD22NM"] = lookup_df["LAD22NM"].astype(str).str.strip()
 
                 lookup_21 = lookup_df.drop_duplicates(subset=["LSOA21CD"]).copy()
-                if clean_scope == "lincolnshire":
-                    lookup_21 = lookup_21[lookup_21["LAD22NM"].isin(LINCOLNSHIRE_LADS_SET)]
+                if clean_scope in PUBLIC_SAMHI3_SCOPE_LADS:
+                    lookup_21 = lookup_21[
+                        lookup_21["LAD22NM"].isin(PUBLIC_SAMHI3_SCOPE_LADS[clean_scope])
+                    ]
 
                 pred_data_cols = [
                     c for c in df.columns
@@ -1409,6 +1808,8 @@ def _get_ml_predictions_df(scope: str = "lincolnshire", experiment_set: int = 1)
                 df["LSOA21CD"] = df["LSOA21CD"].astype(str).str.strip()
                 if "LAD22NM" in df.columns:
                     df["LAD22NM"] = df["LAD22NM"].astype(str).str.strip()
+                    if clean_scope in PUBLIC_SAMHI3_SCOPE_LADS:
+                        df = df[df["LAD22NM"].isin(PUBLIC_SAMHI3_SCOPE_LADS[clean_scope])]
                 _ML_PREDICTIONS_CACHE[cache_key] = df
         else:
             _ML_PREDICTIONS_CACHE[cache_key] = pd.DataFrame()
@@ -1466,18 +1867,19 @@ _ML_PROJ_SUMMARY_CACHE: pd.DataFrame | None = None
 
 
 def _get_ml_projections_df(scope: str = "lincolnshire") -> pd.DataFrame:
-    clean_scope = "lincolnshire" if scope == "lincolnshire" else "national"
+    clean_scope = _normalise_public_samhi3_scope(scope)
+    source_scope = "lincolnshire" if clean_scope == "lincolnshire" else "national"
     if clean_scope not in _ML_PROJECTIONS_CACHE:
         # Prefer the extended projection file, retaining the prior dataset as
         # a compatibility fallback for checkouts that have not updated data.
         csv_path = _dashboard_data_path(
             SAMHI_FORECAST_DATA_DIR,
-            f"forward_projections_2023_2027_{clean_scope}.csv",
+            f"forward_projections_2023_2027_{source_scope}.csv",
         )
         if not csv_path.exists():
             csv_path = _dashboard_data_path(
                 SAMHI_FORECAST_DATA_DIR,
-                f"forward_projections_2023_2025_{clean_scope}.csv",
+                f"forward_projections_2023_2025_{source_scope}.csv",
             )
         if csv_path.exists():
             df = pd.read_csv(csv_path)
@@ -1486,6 +1888,8 @@ def _get_ml_projections_df(scope: str = "lincolnshire") -> pd.DataFrame:
                 df["year"] = pd.to_numeric(df["year"], errors="coerce")
             if "LAD22NM" in df.columns:
                 df["LAD22NM"] = df["LAD22NM"].astype(str).str.strip()
+                if clean_scope in PUBLIC_SAMHI3_SCOPE_LADS:
+                    df = df[df["LAD22NM"].isin(PUBLIC_SAMHI3_SCOPE_LADS[clean_scope])]
             # Keep the API one-to-one at the map key level even if an older
             # result file contains duplicate LSOA-year rows.
             if {"LSOA21CD", "year"}.issubset(df.columns):
@@ -1524,8 +1928,7 @@ def samhi_ml_export_png():
     except ImportError as exc:
         return jsonify({"error": f"Publication map export dependencies are unavailable: {exc}"}), 503
 
-    scope = request.args.get("scope", "lincolnshire").strip().lower()
-    scope = "lincolnshire" if scope == "lincolnshire" else "national"
+    scope = _normalise_public_samhi3_scope(request.args.get("scope", "lincolnshire"))
     try:
         year = int(request.args.get("year", 2025))
     except (TypeError, ValueError):
@@ -1616,9 +2019,7 @@ def samhi_ml_export_png():
     if map_data.empty:
         return jsonify({"error": "No valid numeric values are available for this export."}), 404
 
-    geojson_path = DATASETS_DIR / (
-        GEOJSON_REL_PATH if scope == "lincolnshire" else ENGLAND_GEOJSON_REL_PATH
-    )
+    geojson_path = DATASETS_DIR / PUBLIC_SAMHI3_GEOJSON_PATHS[scope]
     if not geojson_path.exists():
         return jsonify({"error": "The selected LSOA boundary file is unavailable."}), 404
 
@@ -1694,7 +2095,16 @@ def samhi_ml_export_png():
         "pred_ar_baseline_momentum_drift": "Momentum drift baseline",
     }
     model_label = model_labels.get(model, model)
-    scope_label = "Lincolnshire" if scope == "lincolnshire" else "England"
+    scope_label = {
+        "lincolnshire": "Lincolnshire",
+        "north_lincolnshire": "North Lincolnshire",
+        "north_east_lincolnshire": "North East Lincolnshire",
+        "greater_lincolnshire": "Greater Lincolnshire",
+        "nottinghamshire": "Nottinghamshire",
+        "derbyshire": "Derbyshire",
+        "lincolnshire_nottinghamshire_derbyshire": "Lincolnshire, Nottinghamshire and Derbyshire",
+        "national": "England",
+    }[scope]
     title_prefix = "Projected Small Area Mental Health Index (SAMHI)" if is_projection else "Small Area Mental Health Index (SAMHI)"
 
     # Reproject the LSOA boundaries to Web Mercator so they align with OSM tiles.
@@ -1710,7 +2120,7 @@ def samhi_ml_export_png():
         try:
             # Use a higher tile zoom for Lincolnshire so OSM place names are larger
             # and more legible in a 300-DPI publication figure.
-            osm_zoom = 12 if scope == "lincolnshire" else 7
+            osm_zoom = 12 if scope == "lincolnshire" else (7 if scope == "national" else 10)
             lon_min, lat_min, lon_max, lat_max = boundaries_wgs84.total_bounds
             lat_min = max(-85.05112878, min(85.05112878, float(lat_min)))
             lat_max = max(-85.05112878, min(85.05112878, float(lat_max)))
@@ -1763,7 +2173,7 @@ def samhi_ml_export_png():
             osm_image = None
             osm_extent = None
 
-    figure, axis = plt.subplots(figsize=(12, 9) if scope == "lincolnshire" else (14, 10))
+    figure, axis = plt.subplots(figsize=(14, 10) if scope == "national" else (12, 9))
     if osm_image is not None and osm_extent is not None:
         axis.imshow(osm_image, extent=osm_extent, origin="upper", zorder=0)
     boundaries_web.plot(
@@ -1779,7 +2189,7 @@ def samhi_ml_export_png():
 
     # Add larger district labels above the basemap and LSOA layer. OSM town and
     # village names remain visible from the higher-zoom raster tiles underneath.
-    if scope == "lincolnshire" and "_district_name" in boundaries_web.columns:
+    if scope != "national" and "_district_name" in boundaries_web.columns:
         for district_name, district_boundaries in boundaries_web.groupby("_district_name"):
             if not district_name or district_name == "nan":
                 continue
@@ -1870,8 +2280,7 @@ def samhi_ml_export_png():
 def samhi_forecast_page() -> str:
     return render_template(
         "samhi_forecast.html",
-        geojson_lincolnshire=GEOJSON_REL_PATH,
-        geojson_england=ENGLAND_GEOJSON_REL_PATH,
+        geojson_by_scope=PUBLIC_SAMHI3_GEOJSON_PATHS,
         test_years=[2020, 2021, 2022],
         pre_covid_test_years=[2018, 2019],
         projection_years=[2023, 2024, 2025, 2026, 2027],
@@ -1883,15 +2292,13 @@ def samhi_forecast_page() -> str:
 def public_samhi3_page() -> str:
     return render_template(
         "public_samhi3.html",
-        geojson_lincolnshire=GEOJSON_REL_PATH,
-        geojson_england=ENGLAND_GEOJSON_REL_PATH,
+        geojson_by_scope=PUBLIC_SAMHI3_GEOJSON_PATHS,
     )
 
 
 @app.get("/api/public_samhi3")
 def public_samhi3_api():
-    scope = request.args.get("scope", "lincolnshire").strip().lower()
-    scope = "lincolnshire" if scope == "lincolnshire" else "national"
+    scope = _normalise_public_samhi3_scope(request.args.get("scope", "lincolnshire"))
     try:
         year = int(request.args.get("year", 2023))
     except (TypeError, ValueError):
@@ -2073,8 +2480,7 @@ def public_samhi3_api():
 
 @app.get("/api/public_samhi3/history")
 def public_samhi3_history_api():
-    scope = request.args.get("scope", "lincolnshire").strip().lower()
-    scope = "lincolnshire" if scope == "lincolnshire" else "national"
+    scope = _normalise_public_samhi3_scope(request.args.get("scope", "lincolnshire"))
     code = request.args.get("code", "").strip()
     if not code:
         return jsonify({"error": "An LSOA code is required."}), 400
@@ -2132,8 +2538,7 @@ def public_samhi3_shap_api():
 
 @app.get("/api/samhi_ml/history")
 def samhi_ml_history_api():
-    scope = request.args.get("scope", "lincolnshire").strip().lower()
-    scope = "lincolnshire" if scope == "lincolnshire" else "national"
+    scope = _normalise_public_samhi3_scope(request.args.get("scope", "lincolnshire"))
     code = request.args.get("code", "").strip()
     if not code:
         return jsonify({"error": "An LSOA code is required."}), 400
@@ -2197,7 +2602,7 @@ def samhi_ml_history_api():
 
 @app.get("/api/samhi_ml/predictions")
 def samhi_ml_predictions_api():
-    scope = request.args.get("scope", "lincolnshire").strip().lower()
+    scope = _normalise_public_samhi3_scope(request.args.get("scope", "lincolnshire"))
     try:
         year = int(request.args.get("year", 2023))
     except (ValueError, TypeError):
@@ -2282,7 +2687,7 @@ def samhi_ml_predictions_api():
 
 @app.get("/api/samhi_ml/metrics")
 def samhi_ml_metrics_api():
-    scope = request.args.get("scope", "lincolnshire").strip().lower()
+    scope = _normalise_public_samhi3_scope(request.args.get("scope", "lincolnshire"))
     try:
         experiment_set = int(request.args.get("experiment_set", 1))
     except (ValueError, TypeError):
@@ -2298,8 +2703,9 @@ def samhi_ml_metrics_api():
     filtered_metrics = []
     if not metrics_df.empty:
         if "Scope" in metrics_df.columns:
-            m_sub = metrics_df[metrics_df["Scope"] == scope]
-            if m_sub.empty and scope == "lincolnshire":
+            metric_scope = "lincolnshire" if scope == "lincolnshire" else "national"
+            m_sub = metrics_df[metrics_df["Scope"] == metric_scope]
+            if m_sub.empty and metric_scope == "lincolnshire":
                 m_sub = metrics_df[metrics_df["Scope"].str.contains("linc", case=False, na=False)]
             if m_sub.empty:
                 m_sub = metrics_df
@@ -2309,7 +2715,8 @@ def samhi_ml_metrics_api():
 
     filtered_proj_summary = []
     if not proj_summary_df.empty and "Scope" in proj_summary_df.columns:
-        ps_sub = proj_summary_df[proj_summary_df["Scope"] == scope]
+        summary_scope = "lincolnshire" if scope == "lincolnshire" else "national"
+        ps_sub = proj_summary_df[proj_summary_df["Scope"] == summary_scope]
         filtered_proj_summary = ps_sub.to_dict(orient="records")
 
     shap_records = []

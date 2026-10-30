@@ -27,9 +27,9 @@ def process_population_estimates(base_dir: Path) -> pd.DataFrame:
     pop_df = pd.read_excel(excel_path, sheet_name="Mid-2024 LSOA 2021", skiprows=3, engine="calamine")
 
     # 2. Load Lincolnshire 2021 LSOA codes
-    geojson_path = base_dir / "datasets" / "lincolnshire_lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson"
+    geojson_path = base_dir / "datasets" / "lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson"
     if not geojson_path.exists():
-        geojson_path = base_dir.parent / "datasets" / "lincolnshire_lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson"
+        geojson_path = base_dir.parent / "datasets" / "lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson"
 
     with open(geojson_path, "r", encoding="utf-8") as f:
         gj = json.load(f)

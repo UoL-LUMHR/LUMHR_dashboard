@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Lincolnshire SAMHI | LUMHR{% endblock %}
+{% block title %}SAMHI | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
 
 {% block content %}
@@ -8,7 +8,7 @@
   <div class="sidebar-backdrop" id="sidebar_backdrop"></div>
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1>Lincolnshire SAMHI</h1>
+      <h1>SAMHI</h1>
       <button class="sidebar-close-btn" id="sidebar_close_btn" type="button" title="Close Controls">&times;</button>
     </div>
     <p class="muted">
@@ -42,6 +42,20 @@
         <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/patients-registered-at-a-gp-practice/july-2026" target="_blank" rel="noopener noreferrer">GP Patient Registration (NHS Digital)</a></li>
       </ul>
     </details>
+
+    <div class="control">
+      <label for="scope_select" style="font-weight:600; font-size:0.86rem; margin-bottom:0.3rem; display:block;">Geographic Area</label>
+      <select id="scope_select" style="width:100%; padding:0.45rem 0.6rem; border-radius:0.5rem; border:1px solid #b8ccd6; font-size:0.88rem; background:#fff;">
+        <option value="lincolnshire" selected>Lincolnshire</option>
+        <option value="north_lincolnshire">North Lincolnshire</option>
+        <option value="north_east_lincolnshire">North East Lincolnshire</option>
+        <option value="greater_lincolnshire">Greater Lincolnshire</option>
+        <option value="nottinghamshire">Nottinghamshire</option>
+        <option value="derbyshire">Derbyshire</option>
+        <option value="lincolnshire_nottinghamshire_derbyshire">Lincolnshire, Nottinghamshire and Derbyshire</option>
+        <option value="national">England National</option>
+      </select>
+    </div>
 
     <div class="control">
       <label style="font-weight:600; font-size:0.86rem; margin-bottom:0.3rem; display:block;">Analysis Mode</label>
@@ -107,10 +121,11 @@
 
 {% block scripts %}
 <script>
-  const geojsonUrl = "/datasets/{{ geojson_rel_path }}";
+  const GEOJSON = Object.fromEntries(Object.entries({{ geojson_by_scope|tojson }}).map(([scope, path]) => [scope, `/datasets/${path}`]));
   const MIN_YEAR = {{ min_year }};
   const MAX_YEAR = {{ max_year }};
 
+  let currentScope = "lincolnshire";
   let map;
   let geojsonLayer;
   window.lumhrExportMap = () => map;
@@ -137,7 +152,7 @@
   }
 
   function getCode(feature) {
-    return feature?.properties?.CODE ?? feature?.properties?.LSOA_CODE ?? null;
+    return feature?.properties?.CODE ?? feature?.properties?.LSOA_CODE ?? feature?.properties?.LSOA21CD ?? null;
   }
 
   function samhiTooltipText(code, name) {
@@ -258,8 +273,8 @@
         </div>
         <div style="border-top:1px solid #e4ecef; padding-top:8px; margin-top:6px;">
           <div style="font-weight:600; margin-bottom:4px; font-size:12px;">Filter Area Classification</div>
-          <label style="display:block; margin-bottom:3px; font-size:12px; cursor:pointer;"><input id="map_show_urban" type="checkbox" checked> Show Urban LSOAs (236)</label>
-          <label style="display:block; font-size:12px; cursor:pointer;"><input id="map_show_rural" type="checkbox" checked> Show Rural LSOAs (199)</label>
+          <label style="display:block; margin-bottom:3px; font-size:12px; cursor:pointer;"><input id="map_show_urban" type="checkbox" checked> Show Urban LSOAs (<span id="urban_lsoa_count">—</span>)</label>
+          <label style="display:block; font-size:12px; cursor:pointer;"><input id="map_show_rural" type="checkbox" checked> Show Rural LSOAs (<span id="rural_lsoa_count">—</span>)</label>
         </div>
         <div style="border-top:1px solid #e4ecef; padding-top:8px; margin-top:6px;">
           <label for="samhi_opacity_slider" style="display:block; font-weight:600; margin-bottom:4px;">Overlay Transparency</label>
@@ -337,7 +352,7 @@
     geojsonLayer.eachLayer((layer) => {
         const feature = layer.feature;
         const code = getCode(feature) ?? "Unknown";
-        const name = feature?.properties?.NAME ?? "";
+        const name = feature?.properties?.LSOA21NM ?? feature?.properties?.NAME ?? "";
         const details = samhiDetails[code] || {};
         const mode = samhiMeta.mode || getMode();
         const displayName = details.lsoa_name || name || "N/A";
@@ -391,6 +406,7 @@
     updateYearLabels();
 
     const params = new URLSearchParams({
+      scope: currentScope,
       analysis_mode: getAnalysisMode(),
       mode: getMode(),
       year: document.getElementById("year").value,
@@ -408,6 +424,10 @@
     currentScores = payload.scores || {};
     samhiDetails = payload.details || {};
     samhiMeta = payload.meta || {};
+    const urbanCount = Object.values(samhiDetails).filter(detail => detail.is_rural === false).length;
+    const ruralCount = Object.values(samhiDetails).filter(detail => detail.is_rural === true).length;
+    document.getElementById("urban_lsoa_count").textContent = urbanCount.toLocaleString();
+    document.getElementById("rural_lsoa_count").textContent = ruralCount.toLocaleString();
     const values = Object.values(currentScores).map(Number).filter(Number.isFinite);
     minScore = values.length ? Math.min(...values) : 0;
     maxScore = values.length ? Math.max(...values) : 1;
@@ -484,6 +504,24 @@
 
   const lincolnshireBounds = [[52.64022, -0.82065], [53.61637, 0.35797]];
 
+  async function loadGeoJSON() {
+    const resp = await fetch(GEOJSON[currentScope]);
+    if (!resp.ok) throw new Error(`Boundary request failed (${resp.status})`);
+    const geojson = await resp.json();
+    if (geojsonLayer) map.removeLayer(geojsonLayer);
+    geojsonLayer = L.geoJSON(geojson, {
+      style: styleFeature,
+      onEachFeature: (feature, layer) => {
+        const code = getCode(feature) ?? "Unknown";
+        const name = feature?.properties?.LSOA21NM ?? feature?.properties?.NAME ?? "";
+        layer.bindTooltip(samhiTooltipText(code, name));
+      }
+    }).addTo(map);
+    const bounds = geojsonLayer.getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { animate: false });
+    refreshTooltips();
+  }
+
   async function init() {
     setupMobileDrawer();
 
@@ -497,19 +535,8 @@
       attribution: "&copy; OpenStreetMap contributors"
     }).addTo(map);
 
-    const resp = await fetch(geojsonUrl);
-    const geojson = await resp.json();
-
-    geojsonLayer = L.geoJSON(geojson, {
-      style: styleFeature,
-      onEachFeature: (feature, layer) => {
-        const code = getCode(feature) ?? "Unknown";
-        const name = feature?.properties?.NAME ?? "";
-        layer.bindTooltip(samhiTooltipText(code, name));
-      }
-    }).addTo(map);
-
     addMapLegendControl();
+    await loadGeoJSON();
 
     for (const radio of document.querySelectorAll('input[name="analysis_mode"]')) {
       radio.addEventListener("change", async () => {
@@ -521,6 +548,16 @@
     for (const radio of document.querySelectorAll('input[name="mode"]')) {
       radio.addEventListener("change", updateMap);
     }
+
+    document.getElementById("scope_select").addEventListener("change", async (event) => {
+      currentScope = event.target.value;
+      document.getElementById("status").textContent = "Loading SAMHI data for the selected area...";
+      try {
+        await Promise.all([loadGeoJSON(), updateMap()]);
+      } catch (error) {
+        document.getElementById("status").textContent = `Failed to load selected area: ${error?.message || error}`;
+      }
+    });
 
     for (const id of ["year", "from_year", "to_year"]) {
       document.getElementById(id).addEventListener("input", updateMap);

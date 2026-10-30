@@ -7,7 +7,7 @@ script_dir = Path(__file__).resolve().parent
 src_dir = script_dir / "source_data" / "lsoa_classification_2021_2"
 lookup_path = src_dir / "lsoa_dz_sdz_lookup.csv"
 codes_path = src_dir / "classification_codes_and_names_ukoac_lsoac.csv"
-geojson_path = script_dir / "../../datasets/lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson"
+geojson_path = script_dir / "../../datasets/lsoa/lower-super-output-areas-2021-5RrVTw.geojson"
 
 output_dir = script_dir / "../../datasets/lsoa_classification_2021_2"
 output_dir.mkdir(parents=True, exist_ok=True)

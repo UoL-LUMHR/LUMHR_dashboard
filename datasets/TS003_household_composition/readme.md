@@ -8,7 +8,7 @@ This dataset provides 2021 Census estimates from the Office for National Statist
 * **Census Year**: 2021
 * **Geography**: 2021 Lower Layer Super Output Areas (LSOAs)
 * **Local Source File**: `scripts/utils/source_data/TS003_household_composition/TS003 - Household composition.csv`
-* **Boundary Reference**: [`datasets/lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson`](../lincolnshire_lsoa/lower-super-output-areas-2021-5RrVTw.geojson)
+* **Boundary Reference**: [`datasets/lsoa/lower-super-output-areas-2021-5RrVTw.geojson`](../lsoa/lower-super-output-areas-2021-5RrVTw.geojson)
 
 ## Files in this Directory
 * `lincolnshire_ts003_household_composition.csv` — Filtered CSV containing all 435 Lincolnshire LSOAs with total household counts, category counts, and percentage shares.
