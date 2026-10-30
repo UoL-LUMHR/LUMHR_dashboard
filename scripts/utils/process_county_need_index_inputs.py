@@ -60,10 +60,9 @@ PARKFIELDS_JANUARY_REGISTRATION_SOURCE = Path(
 )
 PARKFIELDS_PRACTICE_CODE = "Y05733"
 ODS_GP_LOCATIONS = Path("datasets/gp_locations/GP_Locations_epraccur.csv")
-POSTCODE_LSOA_LOOKUP = Path(
-    "scripts/utils/source_data/Postcode_to_OA_(2021)_to_LSOA_to_MSOA_to_LAD_"
-    "(February_2026)_Best_Fit_Lookup_in_the_UK/"
-    "PCD_OA21_LSOA21_MSOA21_LAD_FEB26_UK_LU.csv"
+POSTCODE_LSOA_LOOKUP_DIR = Path(
+    "datasets/Postcode_to_OA_(2021)_to_LSOA_to_MSOA_to_LAD_"
+    "(February_2026)_Best_Fit_Lookup_in_the_UK"
 )
 POPULATION_SOURCE = Path(
     "scripts/utils/source_data/lsoa_population_estimates/Mid-2022 revised (Nov 2025) to mid-2024/"
@@ -102,20 +101,24 @@ def _load_ods_gp_practices(root: Path) -> pd.DataFrame:
     locations["postcode_key"] = locations["Postcode"].map(_normalize_postcode)
     wanted = set(locations.loc[locations["postcode_key"].ne(""), "postcode_key"])
 
-    lookup_path = root / POSTCODE_LSOA_LOOKUP
+    lookup_dir = root / POSTCODE_LSOA_LOOKUP_DIR
+    lookup_parts = sorted(lookup_dir.glob("postcode_to_lsoa_2021_*.csv"))
+    if not lookup_parts:
+        raise FileNotFoundError(f"No split postcode-to-LSOA lookup CSVs found in {lookup_dir}")
     matches = []
-    for chunk in pd.read_csv(
-        lookup_path,
-        usecols=["pcd7", "lsoa21cd", "dointr", "doterm"],
-        dtype=str,
-        chunksize=250_000,
-        low_memory=False,
-    ):
-        chunk["postcode_key"] = chunk["pcd7"].map(_normalize_postcode)
-        active_postcodes = chunk["doterm"].isna() | chunk["doterm"].astype(str).str.strip().eq("")
-        selected = chunk[active_postcodes & chunk["postcode_key"].isin(wanted)]
-        if not selected.empty:
-            matches.append(selected[["postcode_key", "lsoa21cd", "dointr"]])
+    for lookup_path in lookup_parts:
+        for chunk in pd.read_csv(
+            lookup_path,
+            usecols=["pcd7", "lsoa21cd", "dointr", "doterm"],
+            dtype=str,
+            chunksize=250_000,
+            low_memory=False,
+        ):
+            chunk["postcode_key"] = chunk["pcd7"].map(_normalize_postcode)
+            active_postcodes = chunk["doterm"].isna() | chunk["doterm"].astype(str).str.strip().eq("")
+            selected = chunk[active_postcodes & chunk["postcode_key"].isin(wanted)]
+            if not selected.empty:
+                matches.append(selected[["postcode_key", "lsoa21cd", "dointr"]])
 
     postcode_lookup = (
         pd.concat(matches, ignore_index=True)
