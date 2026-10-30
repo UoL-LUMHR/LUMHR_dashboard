@@ -136,7 +136,7 @@ def _normalise_postcode(value: object) -> str:
 
 def _load_ods_gp_locations(path: Path, base_dir: Path) -> pd.DataFrame:
     locations = pd.read_csv(path, dtype=str, encoding="utf-8-sig", low_memory=False).fillna("")
-    role = locations["RoleID"].astype(str).str.contains(r"(^|\|)RO76($|\|)", regex=True)
+    role = locations["RoleID"].astype(str).str.contains(r"(?:^|\|)RO76(?:$|\|)", regex=True)
     active = locations["StatusName"].astype(str).str.strip().str.upper().eq("ACTIVE")
     locations = locations[role & active].drop_duplicates("OrganisationCode", keep="last").copy()
 
