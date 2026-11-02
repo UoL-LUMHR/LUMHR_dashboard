@@ -10,3 +10,7 @@ lincolnshire_properties_not_connected_to_gas_network_YYYY.csv
 
 The extracts were generated from the source workbook with [extract_lincolnshire_properties_not_connected_to_gas_network.py](../../scripts/utils/extract_lincolnshire_properties_not_connected_to_gas_network.py). The source workbook and its documentation are in [scripts/utils/source_data/properties_not_connected_to_gas_network](../../scripts/utils/source_data/properties_not_connected_to_gas_network/).
 The gas-grid percentage is exported as percentage points: for example, the workbook value 0.062 is represented as 6.2 in the CSV. Blank source values remain blank because they are suppressed for disclosure control.
+
+## England dashboard data
+
+[england_properties_not_connected_to_gas_network_2024.csv](england_properties_not_connected_to_gas_network_2024.csv) contains the 2024 percentage and disclosure status for all 33,755 England LSOAs. The Flask maps read this compact CSV from `datasets/`; suppressed values are marked `Suppressed in source`.

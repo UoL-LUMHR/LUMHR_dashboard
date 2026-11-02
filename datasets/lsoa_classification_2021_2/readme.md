@@ -1,8 +1,8 @@
-# UK LSOA / DZ / SDZ Classification (2021/2 LSOAC) - Lincolnshire LSOAs
+# UK LSOA / DZ / SDZ Classification (2021/2 LSOAC)
 
 The **2021/2 UK Output Area Classification for Lower Layer Super Output Areas (2021/2 LSOAC)** is a 3-tier hierarchical geodemographic classification developed from the 2021 Census of England & Wales (and Scottish Data Zones / Northern Ireland Super Data Zones). It identifies areas with similar social, economic, demographic, and housing characteristics.
 
-This dataset has been filtered and enriched for all **435 Lower Layer Super Output Areas (2021 LSOAs)** within Lincolnshire.
+The Lincolnshire extract contains all **435 Lower Layer Super Output Areas (2021 LSOAs)** within Lincolnshire. The England dashboard export contains the classification codes and names for all **33,755 England LSOAs** and is the input used by the Flask maps.
 
 ## Source Dataset
 * **Source**: [Geographic Data Science (GeoDS) - UK LSOA / DZ / SDZ Classification (2021/2 LSOAC)](https://data.geods.ac.uk/dataset/lsoac)
@@ -13,6 +13,7 @@ This dataset has been filtered and enriched for all **435 Lower Layer Super Outp
 
 ## Files in this Directory
 * `lincolnshire_lsoa_classification_2021_2.csv` — CSV containing all 435 Lincolnshire 2021 LSOAs with Supergroup, Group, and Subgroup codes and descriptive names.
+* `england_lsoa_classification_2021_2.csv` — compact England-wide CSV used by the Flask maps. Runtime data is loaded from `datasets/`; the app does not read files from `scripts/utils/source_data`.
 
 ## Data Columns
 1. `LSOA_Code`: 2021 9-character LSOA code (e.g., `E01026007`).

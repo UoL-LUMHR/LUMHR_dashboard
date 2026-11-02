@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import importlib.util
 import json
 from functools import lru_cache
 from io import BytesIO
@@ -34,7 +33,7 @@ from core.travel import (
     prepare_travel_times,
     prepare_ts003_household_composition,
 )
-from core.common import find_column, normalize_code, parse_numeric
+from core.common import normalize_code
 from core.samhi import SAMHI_YEARS, get_samhi_columns
 from data_loader import get_prepared_bundle_cached, resolve_base_dir
 
@@ -981,23 +980,8 @@ def _get_national_access_risk_components() -> dict[str, pd.DataFrame]:
         lookup_map,
     )
 
-    lsoac_source = BASE_DIR / "scripts" / "utils" / "source_data" / "lsoa_classification_2021_2"
-    lsoac = pd.read_csv(lsoac_source / "lsoa_dz_sdz_lookup.csv", low_memory=False)
-    code_names = pd.read_csv(lsoac_source / "classification_codes_and_names_ukoac_lsoac.csv")
-    for column in ("geography_code", "Supergroup", "Group", "Subgroup"):
-        lsoac[column] = lsoac[column].astype(str).str.strip()
-    name_maps = {
-        level: dict(zip(group["Classification Code"].astype(str).str.strip(), group["Classification Name"].astype(str).str.strip()))
-        for level, group in code_names.groupby("Level")
-    }
-    lsoac = lsoac.rename(columns={"geography_code": "LSOA_Code"})
-    lsoac["Supergroup_Code"] = lsoac["Supergroup"]
-    lsoac["Group_Code"] = lsoac["Group"]
-    lsoac["Subgroup_Code"] = lsoac["Subgroup"]
-    lsoac["Supergroup_Name"] = lsoac["Supergroup_Code"].map(name_maps.get("Supergroup", {}))
-    lsoac["Group_Name"] = lsoac["Group_Code"].map(name_maps.get("Group", {}))
-    lsoac["Subgroup_Name"] = lsoac["Subgroup_Code"].map(name_maps.get("Subgroup", {}))
-    lsoac = prepare_lsoac_classification(lsoac)
+    lsoac_path = DATASETS_DIR / "lsoa_classification_2021_2" / "england_lsoa_classification_2021_2.csv"
+    lsoac = prepare_lsoac_classification(pd.read_csv(lsoac_path, low_memory=False))
 
     return {
         "travel": travel,
@@ -1028,54 +1012,26 @@ def _get_national_access_risk_components() -> dict[str, pd.DataFrame]:
 
 
 @lru_cache(maxsize=1)
-def _get_lsoa_workbook_extractor():
-    extractor_path = BASE_DIR / "scripts" / "utils" / "_lincolnshire_xlsx.py"
-    spec = importlib.util.spec_from_file_location("lumhr_lsoa_xlsx", extractor_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Could not load workbook extractor: {extractor_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.extract_lsoa_rows
+def _get_national_energy_metrics() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load compact, pre-extracted England energy metrics from datasets/."""
+    fuel_path = DATASETS_DIR / "fuel_poverty" / "2024" / "england_fuel_poverty_2024.csv"
+    gas_path = (
+        DATASETS_DIR
+        / "properties_not_connected_to_gas_network"
+        / "england_properties_not_connected_to_gas_network_2024.csv"
+    )
+    fuel = pd.read_csv(fuel_path, dtype={"LSOA_CODE": str}, low_memory=False)
+    gas = pd.read_csv(gas_path, dtype={"LSOA_CODE": str}, low_memory=False)
+    return fuel, gas
 
 
 def _extract_area_energy_metrics(lsoa_codes: set[str]) -> list[pd.DataFrame]:
-    extract_lsoa_rows = _get_lsoa_workbook_extractor()
-    utils_source = BASE_DIR / "scripts" / "utils" / "source_data"
-    fuel_headers, fuel_rows, _ = extract_lsoa_rows(
-        utils_source / "fuel_poverty" / "2024" / "fuel-poverty-sub-regional-2026-2024-data-tables.xlsx",
-        "Table 4",
-        3,
-        "A",
-        lsoa_codes,
-    )
-    fuel = pd.DataFrame(fuel_rows, columns=fuel_headers)
-    fuel = fuel[["LSOA Code", "Proportion of households fuel poor (%)"]].copy()
-    fuel["LSOA_CODE"] = fuel["LSOA Code"].map(normalize_code)
-    fuel["Fuel_Poverty_Pct"] = parse_numeric(fuel["Proportion of households fuel poor (%)"])
-
-    gas_headers, gas_rows, _ = extract_lsoa_rows(
-        utils_source / "properties_not_connected_to_gas_network" / "LSOA_estimates_of_properties_not_connected_to_the_gas_network_2015-2024.xlsx",
-        "2024",
-        4,
-        "E",
-        lsoa_codes,
-    )
-    gas = pd.DataFrame(gas_rows, columns=gas_headers)
-    gas_code_column = find_column(gas, ["LSOA code"])
-    gas_percent_column = find_column(gas, ["Estimated percentage of properties not on the gas grid"])
-    gas = gas[[gas_code_column, gas_percent_column]].copy()
-    gas["LSOA_CODE"] = gas[gas_code_column].map(normalize_code)
-    gas_source_values = gas[gas_percent_column].astype(str).str.strip()
-    gas["Properties_Not_On_Gas_Grid_Pct"] = parse_numeric(
-        gas_source_values
-    ) * 100.0
-    gas["Properties_Not_On_Gas_Grid_Status"] = gas_source_values.map(
-        lambda value: "Suppressed in source" if value in {"", ".."} else None
-    )
-
+    fuel, gas = _get_national_energy_metrics()
     return [
-        fuel[["LSOA_CODE", "Fuel_Poverty_Pct"]].drop_duplicates("LSOA_CODE"),
-        gas[["LSOA_CODE", "Properties_Not_On_Gas_Grid_Pct", "Properties_Not_On_Gas_Grid_Status"]].drop_duplicates("LSOA_CODE"),
+        fuel[fuel["LSOA_CODE"].isin(lsoa_codes)][["LSOA_CODE", "Fuel_Poverty_Pct"]].copy(),
+        gas[gas["LSOA_CODE"].isin(lsoa_codes)][
+            ["LSOA_CODE", "Properties_Not_On_Gas_Grid_Pct", "Properties_Not_On_Gas_Grid_Status"]
+        ].copy(),
     ]
 
 
