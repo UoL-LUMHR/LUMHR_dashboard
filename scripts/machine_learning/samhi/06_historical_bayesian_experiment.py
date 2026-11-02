@@ -134,7 +134,7 @@ def load_historical_fuel_poverty(source_root: Path) -> pd.DataFrame:
 
 
 def _travel_files(datasets_dir: Path, prefix: str) -> Iterable[Tuple[int, Path]]:
-    for path in sorted(datasets_dir.joinpath("journey_time_statistics").glob(f"{prefix}*.csv")):
+    for path in sorted(datasets_dir.joinpath("journey_time_statistics").rglob(f"{prefix}*.csv")):
         match = re.search(r"_(\d{4})(?:_REVISED)?\.csv$", path.name)
         if match:
             yield int(match.group(1)), path

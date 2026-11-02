@@ -142,7 +142,7 @@ def load_all_datasets(project_root: Path) -> Dict[str, pd.DataFrame]:
     if not ts003_path.exists():
         ts003_path = datasets_dir / "TS003_household_composition" / "lincolnshire_ts003_household_composition.csv"
 
-    car_path = datasets_dir / "car_or_van_availability" / "TS045-2021-4-filtered-2026-08-24T10_54_11Z.csv"
+    car_path = datasets_dir / "car_or_van_availability" / "TS045-2021-4-filtered-2026-11-02T14_52_56Z.csv"
     geojson_path = datasets_dir / "lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson"
 
     # National additions

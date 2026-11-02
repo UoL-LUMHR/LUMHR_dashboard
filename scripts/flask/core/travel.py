@@ -41,9 +41,9 @@ def prepare_travel_times(
     hospital_raw: pd.DataFrame,
     lookup_map: dict[str, list[str]],
 ) -> pd.DataFrame:
-    gp_code_col = find_column(gp_raw, ["LSOA_code", "LSOA11CD"])
-    gp_pt_col = find_column(gp_raw, ["GPPTt"])
-    gp_car_col = find_column(gp_raw, ["GPCart"])
+    gp_code_col = find_column(gp_raw, ["LSOA_code", "LSOA11CD", "lsoa11"])
+    gp_pt_col = find_column(gp_raw, ["GPPTt", "gp_pt_time"])
+    gp_car_col = find_column(gp_raw, ["GPCart", "gp_car_time"])
 
     gp_df = pd.DataFrame(
         {
@@ -55,9 +55,9 @@ def prepare_travel_times(
     gp_df = gp_df[gp_df["LSOA_CODE"].ne("")].copy()
     gp_2021 = _remap_2011_df_to_2021(gp_df, lookup_map, ["GP_PT_Time", "GP_Car_Time"])
 
-    hosp_code_col = find_column(hospital_raw, ["LSOA_code", "LSOA11CD"])
-    hosp_pt_col = find_column(hospital_raw, ["HospPTt"])
-    hosp_car_col = find_column(hospital_raw, ["HospCart"])
+    hosp_code_col = find_column(hospital_raw, ["LSOA_code", "LSOA11CD", "lsoa11"])
+    hosp_pt_col = find_column(hospital_raw, ["HospPTt", "hosp_pt_time"])
+    hosp_car_col = find_column(hospital_raw, ["HospCart", "hosp_car_time"])
 
     hosp_df = pd.DataFrame(
         {

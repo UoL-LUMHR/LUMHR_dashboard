@@ -71,10 +71,12 @@ def get_paths(base_dir: Path) -> dict[str, Path]:
         "gp_travel_time": base_dir
         / "datasets"
         / "journey_time_statistics"
+        / "lincolnshire"
         / "jts0505 LSOA Travel Time to GPs_sheet_2019.csv",
         "hospital_travel_time": base_dir
         / "datasets"
         / "journey_time_statistics"
+        / "lincolnshire"
         / "jts0506 LSOA Travel Time to Hospitals_sheet_2019.csv",
         "rural_urban": base_dir
         / "datasets"
@@ -83,6 +85,7 @@ def get_paths(base_dir: Path) -> dict[str, Path]:
         "car_van": base_dir
         / "datasets"
         / "car_or_van_availability"
+        / "lincolnshire"
         / "TS045-2021-4-filtered-2026-08-24T10_54_11Z.csv",
         "deri": base_dir
         / "datasets"

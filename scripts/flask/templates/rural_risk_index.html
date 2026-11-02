@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Lincolnshire Rural Risk Index | LUMHR{% endblock %}
+{% block title %}Rural Risk Index | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
 
 {% block content %}
@@ -11,7 +11,20 @@
       <h1>Rural Risk Index</h1>
       <button class="sidebar-close-btn" id="sidebar_close_btn" type="button" title="Close Controls">&times;</button>
     </div>
-    <p class="muted">Multi-dimensional rural risk and vulnerability model across all 435 Lincolnshire LSOAs.</p>
+    <p class="muted">Choose a geographic area to explore the rural risk and vulnerability model by LSOA.</p>
+
+    <div class="control">
+      <label for="geographic_area"><strong>Geographic Area</strong></label>
+      <select id="geographic_area" style="width:100%; margin-top:.35rem;">
+        <option value="lincolnshire" selected>Lincolnshire</option>
+        <option value="north_lincolnshire">North Lincolnshire</option>
+        <option value="north_east_lincolnshire">North East Lincolnshire</option>
+        <option value="greater_lincolnshire">Greater Lincolnshire</option>
+        <option value="nottinghamshire">Nottinghamshire</option>
+        <option value="derbyshire">Derbyshire</option>
+        <option value="lincolnshire_nottinghamshire_derbyshire">Lincolnshire, Nottinghamshire and Derbyshire</option>
+      </select>
+    </div>
 
     <div class="quick-actions-bar">
       <button class="btn-action-sm" id="btn_reset_weights" type="button" title="Reset all 13 indicator weights equally">↺ Reset Weights (~7.7% each)</button>
@@ -251,9 +264,11 @@
 
 {% block scripts %}
 <script>
-  const geojsonUrl = "/datasets/{{ geojson_rel_path }}";
+  const geojsonByScope = {{ geojson_by_scope|tojson }};
   const GP_LOCATIONS_API = "/api/gp_locations";
   const RURAL_RISK_API = "/api/rural_risk_scores";
+  let currentScope = "lincolnshire";
+  let areaLoadVersion = 0;
 
   let map;
   let geojsonLayer;
@@ -530,13 +545,13 @@
         `<strong>Rural Risk Index:</strong> ${detail.rural_risk_index !== null && detail.rural_risk_index !== undefined ? detail.rural_risk_index.toFixed(4) : "N/A"}<br>` +
         `<strong>Rural / Urban Classification:</strong> ${detail.ruc21nm || "N/A"}<br>` +
         `<strong>Rural Isolation Score (0-1):</strong> ${detail.rural_isolation_score !== null && detail.rural_isolation_score !== undefined ? detail.rural_isolation_score.toFixed(2) : "N/A"}<br>` +
-        `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : "N/A"}<br>` +
-        `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : (detail.dwp_dla_source_status || "N/A")}<br>` +
+        `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : (detail.dwp_pip_source_status || "N/A")}<br>` +
         `<strong>GP Travel Time (PT / Walk):</strong> ${detail.gp_pt_time !== null && detail.gp_pt_time !== undefined ? detail.gp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
         `<strong>GP Travel Time (Car):</strong> ${detail.gp_car_time !== null && detail.gp_car_time !== undefined ? detail.gp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
         `<strong>Households with No Car/Van:</strong> ${detail.no_cars_pct !== null && detail.no_cars_pct !== undefined ? detail.no_cars_pct.toFixed(1) + "%" : "N/A"}<br>` +
         `<strong>Households in Fuel Poverty (2024):</strong> ${detail.fuel_poverty_pct !== null && detail.fuel_poverty_pct !== undefined ? detail.fuel_poverty_pct.toFixed(1) + "%" : "N/A"}<br>` +
-        `<strong>Properties Not on Gas Grid (2024):</strong> ${detail.properties_not_on_gas_grid_pct !== null && detail.properties_not_on_gas_grid_pct !== undefined ? detail.properties_not_on_gas_grid_pct.toFixed(1) + "%" : "N/A"}<br>` +
+        `<strong>Properties Not on Gas Grid (2024):</strong> ${detail.properties_not_on_gas_grid_pct !== null && detail.properties_not_on_gas_grid_pct !== undefined ? detail.properties_not_on_gas_grid_pct.toFixed(1) + "%" : (detail.properties_not_on_gas_grid_status || "N/A")}<br>` +
         `<strong>Owner-Occupied Homes (Census 2021):</strong> ${detail.owner_occupied_pct !== null && detail.owner_occupied_pct !== undefined ? detail.owner_occupied_pct.toFixed(1) + "%" : "N/A"}${detail.owner_occupied_hh_count !== null && detail.owner_occupied_hh_count !== undefined ? ` (${Math.round(detail.owner_occupied_hh_count).toLocaleString()})` : ""}<br>` +
         `<strong>Social-Rented Homes (Census 2021):</strong> ${detail.social_rented_pct !== null && detail.social_rented_pct !== undefined ? detail.social_rented_pct.toFixed(1) + "%" : "N/A"}${detail.social_rented_hh_count !== null && detail.social_rented_hh_count !== undefined ? ` (${Math.round(detail.social_rented_hh_count).toLocaleString()})` : ""}<br>` +
         `<strong>Private-Rented Homes (Census 2021):</strong> ${detail.private_rented_pct !== null && detail.private_rented_pct !== undefined ? detail.private_rented_pct.toFixed(1) + "%" : "N/A"}${detail.private_rented_hh_count !== null && detail.private_rented_hh_count !== undefined ? ` (${Math.round(detail.private_rented_hh_count).toLocaleString()})` : ""}<br>` +
@@ -549,8 +564,8 @@
         `<strong>LSOAC Supergroup:</strong> ${detail.supergroup_name || "N/A"}`;
 
       if (detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined) {
-        popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : "N/A"}` +
-          `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : "N/A"}`;
+        popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : (detail.dwp_dla_source_status || "N/A")}` +
+          `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : (detail.dwp_pip_source_status || "N/A")}`;
         if (detail.dwp_source) popupHtml += `<br><strong>DWP source:</strong> ${detail.dwp_source}`;
       }
 
@@ -697,10 +712,13 @@
     }
   }
 
-  async function loadGpLayer() {
+  async function loadGpLayer(requestVersion = areaLoadVersion) {
     try {
+      if (gpLayer) map.removeLayer(gpLayer);
       gpLayer = L.layerGroup();
-      const res = await fetch(GP_LOCATIONS_API);
+      const requestedScope = currentScope;
+      const res = await fetch(`${GP_LOCATIONS_API}?scope=${encodeURIComponent(requestedScope)}`);
+      if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const markers = await res.json();
       const gps = Array.isArray(markers) ? markers : (markers.gp_locations || []);
@@ -745,7 +763,8 @@
     }
   }
 
-  async function recalculateRuralRisk() {
+  async function recalculateRuralRisk(requestVersion = areaLoadVersion) {
+    const requestedScope = currentScope;
     const statusEl = document.getElementById("status");
     try {
       if (statusEl) statusEl.textContent = "Recalculating scores...";
@@ -753,16 +772,19 @@
       sliderIds.forEach(id => {
         params.set(id, document.getElementById(id).value);
       });
+      params.set("scope", requestedScope);
 
       const res = await fetch(`${RURAL_RISK_API}?${params.toString()}`);
+      if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
 
       ruralLayerScores = data.layers || {};
       lsoaDetails = data.lsoa_details || {};
 
       applyActiveLayerStyle();
-      if (statusEl) statusEl.textContent = "Ready. 435 Lincolnshire LSOAs loaded.";
+      if (statusEl) statusEl.textContent = "Selected area scores loaded.";
     } catch (err) {
       if (statusEl) statusEl.textContent = `Error: ${err.message}`;
       console.error(err);
@@ -835,11 +857,7 @@
       attribution: "&copy; OpenStreetMap contributors"
     }).addTo(map);
 
-    const lincolnshireBounds = [
-      [52.64022, -0.82065],
-      [53.61637, 0.35797]
-    ];
-    map.fitBounds(lincolnshireBounds, { animate: false });
+    map.setView([53.1, -0.6], 8);
 
     addMapLegendControl();
     updateWeightsSummary();
@@ -849,13 +867,15 @@
       if (el) el.addEventListener("input", onSliderChange);
     });
 
-    await recalculateRuralRisk();
-
-    try {
-      const geoRes = await fetch(geojsonUrl);
+    async function loadGeoJSON(requestVersion = areaLoadVersion) {
+      const requestedScope = currentScope;
+      const relativePath = geojsonByScope[requestedScope];
+      const geoRes = await fetch(`/datasets/${relativePath}`);
+      if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
       if (!geoRes.ok) throw new Error(`HTTP ${geoRes.status}`);
       const geoData = await geoRes.json();
-
+      if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
+      if (geojsonLayer) map.removeLayer(geojsonLayer);
       geojsonLayer = L.geoJSON(geoData, {
         style: styleFeature,
         onEachFeature: (feature, layer) => {
@@ -873,14 +893,32 @@
           });
         }
       }).addTo(map);
-
+      const bounds = geojsonLayer.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds, { animate: false, padding: [12, 12] });
       applyActiveLayerStyle();
+    }
+
+    try {
+      await Promise.all([recalculateRuralRisk(), loadGeoJSON()]);
     } catch (err) {
       console.error("GeoJSON error:", err);
     }
-
     await loadGpLayer();
     syncGpLayerVisibility();
+
+    document.getElementById("geographic_area").addEventListener("change", async (event) => {
+      currentScope = event.target.value;
+      const requestVersion = ++areaLoadVersion;
+      const statusEl = document.getElementById("status");
+      if (statusEl) statusEl.textContent = "Loading selected area...";
+      try {
+        await Promise.all([recalculateRuralRisk(requestVersion), loadGeoJSON(requestVersion)]);
+        await loadGpLayer(requestVersion);
+        syncGpLayerVisibility();
+      } catch (error) {
+        if (requestVersion === areaLoadVersion && statusEl) statusEl.textContent = error.message;
+      }
+    });
   }
 
   window.addEventListener("DOMContentLoaded", initMap);

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
 import json
 from functools import lru_cache
 from io import BytesIO
@@ -11,6 +12,7 @@ import pandas as pd
 from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
 
 from core.allocation import (
+    allocate_access_rates_to_lsoa,
     allocate_registers_to_lsoa,
     build_gp_master,
     build_gp_marker_df,
@@ -21,6 +23,18 @@ from core.allocation import (
 from core.need_index import apply_need_index
 from core.access_index import apply_access_index
 from core.rural_risk_index import apply_rural_risk_index
+from core.housing import prepare_bedroom_occupancy, prepare_housing_tenure
+from core.travel import (
+    build_2011_to_2021_lookup,
+    prepare_car_availability,
+    prepare_digital_exclusion,
+    prepare_imd_2025,
+    prepare_lsoac_classification,
+    prepare_rural_urban,
+    prepare_travel_times,
+    prepare_ts003_household_composition,
+)
+from core.common import find_column, normalize_code, parse_numeric
 from core.samhi import SAMHI_YEARS, get_samhi_columns
 from data_loader import get_prepared_bundle_cached, resolve_base_dir
 
@@ -104,13 +118,12 @@ def _read_public_dwp_august_counts(base_dir: Path) -> pd.DataFrame:
         return pd.DataFrame(columns=["LSOA_CODE", "year", "dwp_dla_count", "dwp_pip_count"])
     files = {name: source_dir / filename for name, filename in filenames.items()}
 
-    target_codes = set(LSOA_METRICS["LSOA_CODE"].astype(str))
     with boundary_path.open(encoding="utf-8") as handle:
         geojson = json.load(handle)
     name_to_code = {
         str(feature.get("properties", {}).get("LSOA21NM", "")).strip(): str(feature.get("properties", {}).get("LSOA21CD", "")).strip()
         for feature in geojson.get("features", [])
-        if str(feature.get("properties", {}).get("LSOA21CD", "")).strip() in target_codes
+        if str(feature.get("properties", {}).get("LSOA21CD", "")).strip()
         and str(feature.get("properties", {}).get("LSOA21NM", "")).strip()
     }
 
@@ -155,18 +168,17 @@ def _read_public_dwp_august_counts(base_dir: Path) -> pd.DataFrame:
 
 @lru_cache(maxsize=1)
 def _load_public_dwp_pip_suppression(base_dir_str: str) -> pd.DataFrame:
-    """Identify PIP counts explicitly suppressed in DWP's August exports."""
+    """Identify DLA/PIP counts explicitly suppressed in DWP's August exports."""
     base_dir = Path(base_dir_str)
     boundary_path = base_dir / "datasets" / "lsoa" / "england_lsoa_2021.geojson"
-    source_path = (
-        base_dir
-        / "datasets"
-        / "DWP_DLA_PIP_data"
-        / "PIP_cases_with_entitlement_mental_health_learning_difficulties_from_2019_lsoa.csv"
-    )
-    columns = ["LSOA_CODE", "year", "dwp_pip_source_status"]
-    if not boundary_path.exists() or not source_path.exists():
-        return pd.DataFrame(columns=columns)
+    source_files = {
+        "dwp_dla_source_status": "DLA_claimants_mental_health_learning_difficulties_from_may_2018_lsoa.csv",
+        "dwp_pip_source_status": "PIP_cases_with_entitlement_mental_health_learning_difficulties_from_2019_lsoa.csv",
+    }
+    output_columns = ["LSOA_CODE", "year", *source_files]
+    source_dir = base_dir / "datasets" / "DWP_DLA_PIP_data"
+    if not boundary_path.exists() or not all((source_dir / name).exists() for name in source_files.values()):
+        return pd.DataFrame(columns=output_columns)
 
     with boundary_path.open(encoding="utf-8") as handle:
         geojson = json.load(handle)
@@ -178,31 +190,55 @@ def _load_public_dwp_pip_suppression(base_dir_str: str) -> pd.DataFrame:
         if str(feature.get("properties", {}).get("LSOA21NM", "")).strip()
         and str(feature.get("properties", {}).get("LSOA21CD", "")).strip()
     }
-    with source_path.open(encoding="utf-8-sig", newline="") as handle:
-        rows = list(csv.reader(handle))
-    header_idx = next((idx for idx, row in enumerate(rows) if row and row[0] == "Month"), None)
-    if header_idx is None:
-        return pd.DataFrame(columns=columns)
-    periods = {}
-    for idx, label in enumerate(rows[header_idx][1:], start=1):
-        try:
-            year = int(pd.to_datetime(str(label).strip(), format="%b-%y").year)
-        except (TypeError, ValueError):
-            continue
-        if year in DWP_AVAILABLE_YEARS and str(label).strip().startswith("Aug-"):
-            periods[idx] = year
 
     suppressed = []
-    for row in rows[header_idx + 1:]:
-        if not row:
+    for status_column, filename in source_files.items():
+        with (source_dir / filename).open(encoding="utf-8-sig", newline="") as handle:
+            rows = list(csv.reader(handle))
+        header_idx = next(
+            (idx for idx, row in enumerate(rows) if row and row[0] in {"Month", "Quarter"}),
+            None,
+        )
+        if header_idx is None:
             continue
-        code = name_to_code.get(str(row[0]).strip())
-        if not code:
-            continue
-        for idx, year in periods.items():
-            if idx < len(row) and row[idx].strip() == "..":
-                suppressed.append((code, year, "Suppressed in DWP source"))
-    return pd.DataFrame(suppressed, columns=columns).drop_duplicates(["LSOA_CODE", "year"])
+        periods = {}
+        for idx, label in enumerate(rows[header_idx][1:], start=1):
+            label = str(label).strip()
+            if not label.startswith("Aug-"):
+                continue
+            try:
+                year = int(pd.to_datetime(label, format="%b-%y").year)
+            except (TypeError, ValueError):
+                continue
+            if year in DWP_AVAILABLE_YEARS:
+                periods[idx] = year
+
+        for row in rows[header_idx + 1:]:
+            if not row:
+                continue
+            code = name_to_code.get(str(row[0]).strip())
+            if not code:
+                continue
+            for idx, year in periods.items():
+                if idx < len(row) and row[idx].strip() == "..":
+                    suppressed.append((code, year, status_column, "Suppressed in DWP source"))
+
+    if not suppressed:
+        return pd.DataFrame(columns=output_columns)
+    statuses = pd.DataFrame(
+        suppressed,
+        columns=["LSOA_CODE", "year", "status_column", "status"],
+    ).drop_duplicates(["LSOA_CODE", "year", "status_column"])
+    statuses = statuses.pivot(
+        index=["LSOA_CODE", "year"],
+        columns="status_column",
+        values="status",
+    ).reset_index()
+    statuses.columns.name = None
+    for column in source_files:
+        if column not in statuses:
+            statuses[column] = pd.NA
+    return statuses[output_columns]
 
 
 @lru_cache(maxsize=1)
@@ -228,15 +264,13 @@ def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
         "dwp_dla_pip_rate_pct",
         "dwp_dla_count",
         "dwp_pip_count",
+        "dwp_dla_rate_pct",
+        "dwp_pip_rate_pct",
         "dwp_population_source_year",
         "dla_pip_source",
     ]
     if not panel_path.exists() or not lookup_path.exists():
         return pd.DataFrame(columns=["LSOA_CODE", *cols[1:], "dwp_dla_rate_pct", "dwp_pip_rate_pct"])
-
-    # Read the raw exports for matching split LSOA21 rows. They retain both
-    # children of a split 2011 LSOA and identify partial disclosure rows.
-    raw_counts = _read_public_dwp_august_counts(Path(base_dir))
 
     panel = pd.read_csv(panel_path, usecols=cols, low_memory=False)
     panel["year"] = pd.to_numeric(panel["year"], errors="coerce")
@@ -266,6 +300,7 @@ def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
         columns={"dwp_dla_count": "panel_dla_count", "dwp_pip_count": "panel_pip_count"}
     )
     raw_counts = _read_public_dwp_august_counts(Path(base_dir))
+    fallback_population = _load_dwp_fallback_population(base_dir)
     if not raw_counts.empty:
         candidates = panel_for_match.merge(lookup, on="lsoa11", how="inner")
         matched = candidates.merge(raw_counts, on=["LSOA_CODE", "year"], how="inner")
@@ -291,15 +326,30 @@ def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
     panel["LSOA_CODE"] = panel["_resolved_code"].combine_first(panel["_fallback_code"])
     panel["LSOA_CODE"] = panel["LSOA_CODE"].replace({"nan": pd.NA, "": pd.NA})
     panel = panel.dropna(subset=["LSOA_CODE"])
-    panel = panel.sort_values(["year", "LSOA_CODE"]).drop_duplicates(subset=["year", "LSOA_CODE"], keep="last")
+    # Some 2021 LSOAs merge two 2011 LSOAs. When a panel row matches the
+    # published 2021 DWP counts, prefer that resolved row over the other
+    # parent's fallback mapping instead of arbitrarily keeping the last row.
+    panel["_resolved_priority"] = panel["_resolved_code"].notna().astype("int8")
+    panel["_component_rate_coverage"] = panel[["dwp_dla_rate_pct", "dwp_pip_rate_pct"]].notna().sum(axis=1)
+    panel = panel.sort_values(
+        ["year", "LSOA_CODE", "_resolved_priority", "_component_rate_coverage"],
+        kind="stable",
+    ).drop_duplicates(subset=["year", "LSOA_CODE"], keep="last")
     # The panel publishes the combined DLA+PIP rate and separate claimant
     # counts. Derive component rates against the same denominator so the two
     # indicators remain directly comparable with the combined layer.
     combined_count = pd.to_numeric(panel["dwp_dla_pip_count"], errors="coerce")
     combined_rate = pd.to_numeric(panel["dwp_dla_pip_rate_pct"], errors="coerce")
     denominator = (combined_count / combined_rate.replace(0.0, pd.NA)) * 100.0
-    panel["dwp_dla_rate_pct"] = pd.to_numeric(panel["dwp_dla_count"], errors="coerce") / denominator * 100.0
-    panel["dwp_pip_rate_pct"] = pd.to_numeric(panel["dwp_pip_count"], errors="coerce") / denominator * 100.0
+    # Keep the component rates published in the panel. Re-deriving both from
+    # the combined DLA+PIP denominator erased an available DLA rate whenever
+    # the PIP count (and therefore the combined rate) was disclosure-suppressed.
+    panel["dwp_dla_rate_pct"] = pd.to_numeric(panel["dwp_dla_rate_pct"], errors="coerce").combine_first(
+        pd.to_numeric(panel["dwp_dla_count"], errors="coerce") / denominator * 100.0
+    )
+    panel["dwp_pip_rate_pct"] = pd.to_numeric(panel["dwp_pip_rate_pct"], errors="coerce").combine_first(
+        pd.to_numeric(panel["dwp_pip_count"], errors="coerce") / denominator * 100.0
+    )
     output = panel[["LSOA_CODE", "year", "dwp_dla_pip_count", "dwp_dla_pip_rate_pct", "dwp_dla_count", "dwp_pip_count", "dwp_dla_rate_pct", "dwp_pip_rate_pct", "dwp_population_source_year", "dla_pip_source"]].copy()
 
     # The map uses 2021 LSOA geometries, while the reconstructed panel is now
@@ -325,7 +375,7 @@ def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
                 on=["lsoa11", "year"],
                 how="left",
             )
-            child_population = LSOA_METRICS[["LSOA_CODE", "ONS_Pop_18to64"]].copy()
+            child_population = fallback_population
             allocated = allocated.merge(child_population, on="LSOA_CODE", how="left")
             allocated["parent_child_population"] = allocated.groupby(["lsoa11", "year"])["ONS_Pop_18to64"].transform("sum")
             complete_split = (
@@ -358,8 +408,7 @@ def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
             allocated_keys = allocated[["LSOA_CODE", "year"]].assign(_allocated=True)
             partial = partial.merge(allocated_keys, on=["LSOA_CODE", "year"], how="left")
             partial = partial[partial["_allocated"].isna()].drop(columns=["_allocated"], errors="ignore")
-        pop = LSOA_METRICS[["LSOA_CODE", "ONS_Pop_18to64"]].copy()
-        partial = partial.merge(pop, on="LSOA_CODE", how="left")
+        partial = partial.merge(fallback_population, on="LSOA_CODE", how="left")
         partial["dwp_population_source_year"] = 2024.0
         partial["dwp_dla_pip_count"] = partial[["dwp_dla_count", "dwp_pip_count"]].sum(axis=1, min_count=1)
         denominator = pd.to_numeric(partial["ONS_Pop_18to64"], errors="coerce")
@@ -384,6 +433,21 @@ def _attach_public_dwp_layer(scored: pd.DataFrame, year: int) -> pd.DataFrame:
     pip_status = pip_status[pip_status["year"].eq(year)].drop(columns=["year"], errors="ignore")
     dwp = dwp.merge(pip_status, on="LSOA_CODE", how="left")
     return scored.merge(dwp, on="LSOA_CODE", how="left")
+
+
+@lru_cache(maxsize=1)
+def _load_dwp_fallback_population(base_dir: str) -> pd.DataFrame:
+    """Load 2024 18–64 populations for the supported LSOA21 map geographies."""
+    directory = Path(base_dir) / "datasets" / "population_estimates"
+    paths = sorted(directory.glob("*_lsoa_population_estimates_2024.csv"))
+    columns = ["LSOA_CODE", "ONS_Pop_18to64"]
+    frames = [pd.read_csv(path, usecols=columns, dtype={"LSOA_CODE": str}) for path in paths]
+    if not frames:
+        return pd.DataFrame(columns=columns)
+    population = pd.concat(frames, ignore_index=True)
+    population["LSOA_CODE"] = population["LSOA_CODE"].map(normalize_code)
+    population["ONS_Pop_18to64"] = pd.to_numeric(population["ONS_Pop_18to64"], errors="coerce")
+    return population.drop_duplicates("LSOA_CODE", keep="first")
 
 
 def _parse_float_arg(name: str, default: float) -> float:
@@ -413,6 +477,13 @@ def _num_or_none(value: object) -> float | None:
     if value is None or pd.isna(value):
         return None
     return float(value)
+
+
+def _text_or_none(value: object) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _json_safe(value: object) -> object:
@@ -470,25 +541,17 @@ def samhi_page() -> str:
 
 @app.get("/access_index")
 def access_index_page() -> str:
-    out_lsoa_count = len(BUNDLE["out_of_area_lsoa_codes"])
-    out_patients = int(round(float(BUNDLE["out_of_area_patients"])))
     return render_template(
         "access_index.html",
-        geojson_rel_path=GEOJSON_REL_PATH,
-        out_of_area_lsoa_count_fmt=f"{out_lsoa_count:,}",
-        out_of_area_patients_fmt=f"{out_patients:,}",
+        geojson_by_scope=NEED_INDEX_GEOJSON_PATHS,
     )
 
 
 @app.get("/access_gap_index")
 def access_gap_index_page() -> str:
-    out_lsoa_count = len(BUNDLE["out_of_area_lsoa_codes"])
-    out_patients = int(round(float(BUNDLE["out_of_area_patients"])))
     return render_template(
         "access_gap_index.html",
-        geojson_rel_path=GEOJSON_REL_PATH,
-        out_of_area_lsoa_count_fmt=f"{out_lsoa_count:,}",
-        out_of_area_patients_fmt=f"{out_patients:,}",
+        geojson_by_scope=NEED_INDEX_GEOJSON_PATHS,
         min_year=min(SAMHI_YEARS),
         max_year=max(SAMHI_YEARS),
     )
@@ -498,7 +561,7 @@ def access_gap_index_page() -> str:
 def rural_risk_index_page() -> str:
     return render_template(
         "rural_risk_index.html",
-        geojson_rel_path=GEOJSON_REL_PATH,
+        geojson_by_scope=NEED_INDEX_GEOJSON_PATHS,
     )
 
 
@@ -679,7 +742,9 @@ def need_scores_api():
         "LSOA_CODE",
         "Need_Index",
         "Depression_Prevalence_Pct",
+        "Depression_Coverage_Pct",
         "SMI_Prevalence_Pct",
+        "SMI_Coverage_Pct",
         "Antidepressant_Items_Per_Patient",
         "Antidepressant_Coverage_Pct",
         "SAMHI_Selected",
@@ -701,6 +766,7 @@ def need_scores_api():
         "dwp_pip_rate_pct",
         "dwp_dla_count",
         "dwp_pip_count",
+        "dwp_dla_source_status",
         "dwp_pip_source_status",
         "dwp_population_source_year",
         "dla_pip_source",
@@ -723,7 +789,9 @@ def need_scores_api():
             "lsoa_name": str(row.get(lsoa_name_col, "") or "") if lsoa_name_col else "",
             "need_index": _num_or_none(row.get("Need_Index")),
             "depression_prevalence_pct": _num_or_none(row.get("Depression_Prevalence_Pct")),
+            "depression_coverage_pct": _num_or_none(row.get("Depression_Coverage_Pct")),
             "smi_prevalence_pct": _num_or_none(row.get("SMI_Prevalence_Pct")),
+            "smi_coverage_pct": _num_or_none(row.get("SMI_Coverage_Pct")),
             "antidepressant_items_per_patient": _num_or_none(row.get("Antidepressant_Items_Per_Patient")),
             "antidepressant_coverage_pct": _num_or_none(row.get("Antidepressant_Coverage_Pct")),
             "samhi_selected": _num_or_none(row.get("SAMHI_Selected")),
@@ -752,11 +820,12 @@ def need_scores_api():
             "parkfields_july_2026_patients": _num_or_none(row.get("Parkfields_July_2026_Patients")),
             "dwp_dla_rate_pct": _num_or_none(row.get("dwp_dla_rate_pct")),
             "dwp_pip_rate_pct": _num_or_none(row.get("dwp_pip_rate_pct")),
-            "dwp_pip_source_status": str(row.get("dwp_pip_source_status", "") or "") or None,
+            "dwp_dla_source_status": _text_or_none(row.get("dwp_dla_source_status")),
+            "dwp_pip_source_status": _text_or_none(row.get("dwp_pip_source_status")),
             "dwp_dla_count": _num_or_none(row.get("dwp_dla_count")),
             "dwp_pip_count": _num_or_none(row.get("dwp_pip_count")),
             "dwp_population_source_year": _num_or_none(row.get("dwp_population_source_year")),
-            "dwp_source": str(row.get("dla_pip_source", "") or "") or None,
+            "dwp_source": _text_or_none(row.get("dla_pip_source")),
         }
 
     return jsonify(
@@ -778,8 +847,284 @@ def need_scores_api():
     )
 
 
+_AREA_METRICS_CACHE: dict[str, pd.DataFrame] = {}
+
+
+@lru_cache(maxsize=1)
+def _prepare_national_deri() -> pd.DataFrame:
+    """Calculate DERI across England, then expand its 2011 LSOAs to 2021."""
+    source_path = DATASETS_DIR / "digital_exclusion_risk_index" / "DERI dataset_v1.6.csv"
+    raw = pd.read_csv(source_path, low_memory=False)
+    source_columns = {
+        "Percentage of population aged 65 and over": "Aged_65_Plus_Pct",
+        "Percentage of residents whose day-to-day activities are limited": "Day_To_Day_Limited_Pct",
+        "Percentage of residents aged 16+ with no qualifications": "No_Qualifications_Pct",
+        "Guaranteed pension credit (rate per 1,000 aged 65+)": "Pension_Credit_Rate",
+        "Unemployment rate": "Unemployment_Rate",
+        "Percentage of population in social grade DE": "Social_Grade_DE_Pct",
+        "Index of Multiple Deprivation 2019 score - England base": "IMD_2019_Score",
+        "Percentage of homes unable to receive at least 30Mbit/s broadband": "No_Superfast_Broadband_Pct",
+        "Average download speed (Mbit/s)": "Avg_Download_Speed_Mbps",
+        "Percentage of connections receiving less than 10Mbit/s broadband": "Slow_Connections_Pct",
+    }
+    numeric_columns = list(source_columns)
+    for column in numeric_columns:
+        raw[column] = pd.to_numeric(raw[column], errors="coerce")
+        raw[column] = raw[column].fillna(raw[column].median())
+
+    def score(values: pd.Series, invert: bool = False) -> pd.Series:
+        low = values.min()
+        high = values.max()
+        if pd.isna(low) or pd.isna(high) or high == low:
+            return pd.Series(0.0, index=values.index)
+        normalized = (values - low) / (high - low)
+        return (1.0 - normalized if invert else normalized) * 10.0
+
+    age = "Percentage of population aged 65 and over"
+    disability = "Percentage of residents whose day-to-day activities are limited"
+    qualifications = "Percentage of residents aged 16+ with no qualifications"
+    pension = "Guaranteed pension credit (rate per 1,000 aged 65+)"
+    unemployment = "Unemployment rate"
+    social_grade = "Percentage of population in social grade DE"
+    imd = "Index of Multiple Deprivation 2019 score - England base"
+    no_superfast = "Percentage of homes unable to receive at least 30Mbit/s broadband"
+    speed = "Average download speed (Mbit/s)"
+    slow_connections = "Percentage of connections receiving less than 10Mbit/s broadband"
+
+    raw["Demography_Score"] = (score(raw[age]) + score(raw[disability])) / 2.0
+    raw["Deprivation_Score"] = (
+        score(raw[qualifications]) + score(raw[pension]) + score(raw[unemployment])
+        + score(raw[social_grade]) + score(raw[imd])
+    ) / 5.0
+    raw["Broadband_Score"] = (
+        score(raw[no_superfast]) + score(raw[speed], invert=True) + score(raw[slow_connections])
+    ) / 3.0
+    raw["DERI_Score"] = (raw["Demography_Score"] + raw["Deprivation_Score"] + raw["Broadband_Score"]) / 3.0
+    raw["Digital_Access"] = 1.0 - raw["DERI_Score"] / 10.0
+    percentage_outputs = {
+        "Aged_65_Plus_Pct",
+        "Day_To_Day_Limited_Pct",
+        "No_Qualifications_Pct",
+        "Social_Grade_DE_Pct",
+        "No_Superfast_Broadband_Pct",
+        "Slow_Connections_Pct",
+        "Unemployment_Rate",
+    }
+    for source_column, output_column in source_columns.items():
+        multiplier = 100.0 if output_column in percentage_outputs else 1.0
+        raw[output_column] = raw[source_column] * multiplier
+
+    lookup_path = (
+        DATASETS_DIR / "lsoa" / "lsoa_2011_to_2021_lookup"
+        / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+    )
+    lookup = pd.read_csv(lookup_path, usecols=["LSOA11CD", "LSOA21CD"], dtype=str)
+    lookup["LSOA11CD"] = lookup["LSOA11CD"].astype(str).str.strip()
+    lookup["LSOA21CD"] = lookup["LSOA21CD"].astype(str).str.strip()
+    raw["LSOA code"] = raw["LSOA code"].astype(str).str.strip()
+    value_columns = [*source_columns.values(), "DERI_Score", "Digital_Access"]
+    expanded = lookup.merge(raw[["LSOA code", *value_columns]], left_on="LSOA11CD", right_on="LSOA code", how="left")
+    expanded = expanded.groupby("LSOA21CD", as_index=False)[value_columns].mean()
+    expanded = expanded.rename(columns={"LSOA21CD": "LSOA_Code"})
+    return prepare_digital_exclusion(expanded)
+
+
+@lru_cache(maxsize=1)
+def _prepare_national_ts003() -> pd.DataFrame:
+    """Parse the national Nomis TS003 download into the dashboard's prepared shape."""
+    source_path = DATASETS_DIR / "TS003_household_composition" / "TS003 - Household composition.csv"
+    rows: list[dict[str, object]] = []
+    raw_headers: list[str] = []
+    with source_path.open(encoding="utf-8-sig", newline="") as source:
+        for row_number, row in enumerate(csv.reader(source)):
+            if row_number == 7:
+                raw_headers = row
+                continue
+            if row_number < 9 or not row or not row[0].strip():
+                continue
+            geography = row[0].strip()
+            code = geography.split(" : ", 1)[0].strip()
+            record: dict[str, object] = {"LSOA_Code": code}
+            for column_index, value in enumerate(row[1:], start=1):
+                if column_index >= len(raw_headers):
+                    break
+                header = raw_headers[column_index].strip()
+                if header == "%":
+                    column_name = f"{raw_headers[column_index - 1].strip()}_Pct"
+                elif header == "Total: All households":
+                    column_name = "Total_All_Households"
+                else:
+                    column_name = f"{header}_Count"
+                try:
+                    number = float(value)
+                    record[column_name] = int(number) if number.is_integer() and not column_name.endswith("_Pct") else number
+                except ValueError:
+                    record[column_name] = value
+            rows.append(record)
+    return prepare_ts003_household_composition(pd.DataFrame(rows))
+
+
+@lru_cache(maxsize=1)
+def _get_national_access_risk_components() -> dict[str, pd.DataFrame]:
+    """Prepare England-wide indicators shared by the non-Lincolnshire maps."""
+    journey_dir = DATASETS_DIR / "journey_time_statistics"
+    lookup_path = (
+        DATASETS_DIR
+        / "lsoa"
+        / "lsoa_2011_to_2021_lookup"
+        / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+    )
+    lookup_map = build_2011_to_2021_lookup(pd.read_csv(lookup_path, dtype=str))
+    travel = prepare_travel_times(
+        pd.read_csv(journey_dir / "england" / "clean_gps_2019_england.csv"),
+        pd.read_csv(journey_dir / "england" / "clean_hospitals_2019_england.csv"),
+        lookup_map,
+    )
+
+    lsoac_source = BASE_DIR / "scripts" / "utils" / "source_data" / "lsoa_classification_2021_2"
+    lsoac = pd.read_csv(lsoac_source / "lsoa_dz_sdz_lookup.csv", low_memory=False)
+    code_names = pd.read_csv(lsoac_source / "classification_codes_and_names_ukoac_lsoac.csv")
+    for column in ("geography_code", "Supergroup", "Group", "Subgroup"):
+        lsoac[column] = lsoac[column].astype(str).str.strip()
+    name_maps = {
+        level: dict(zip(group["Classification Code"].astype(str).str.strip(), group["Classification Name"].astype(str).str.strip()))
+        for level, group in code_names.groupby("Level")
+    }
+    lsoac = lsoac.rename(columns={"geography_code": "LSOA_Code"})
+    lsoac["Supergroup_Code"] = lsoac["Supergroup"]
+    lsoac["Group_Code"] = lsoac["Group"]
+    lsoac["Subgroup_Code"] = lsoac["Subgroup"]
+    lsoac["Supergroup_Name"] = lsoac["Supergroup_Code"].map(name_maps.get("Supergroup", {}))
+    lsoac["Group_Name"] = lsoac["Group_Code"].map(name_maps.get("Group", {}))
+    lsoac["Subgroup_Name"] = lsoac["Subgroup_Code"].map(name_maps.get("Subgroup", {}))
+    lsoac = prepare_lsoac_classification(lsoac)
+
+    return {
+        "travel": travel,
+        "rural_urban": prepare_rural_urban(pd.read_csv(
+            DATASETS_DIR / "rural_urban_classification_2021_lsoa" / "Rural_Urban_Classification_(2021)_of_LSOAs_in_EW.csv",
+            low_memory=False,
+        )),
+        "car_van": prepare_car_availability(pd.read_csv(
+            DATASETS_DIR / "car_or_van_availability" / "TS045-2021-4-filtered-2026-11-02T14_52_56Z.csv",
+            low_memory=False,
+        )),
+        "deri": _prepare_national_deri(),
+        "imd": prepare_imd_2025(pd.read_csv(
+            DATASETS_DIR / "indices_of_deprivation_imd" / "2025" / "england_imd_2025_lsoa.csv",
+            low_memory=False,
+        )),
+        "lsoac": lsoac,
+        "ts003": _prepare_national_ts003(),
+        "tenure": prepare_housing_tenure(pd.read_csv(
+            DATASETS_DIR / "TS054_tenure" / "TS054-2021-4-filtered-2026-09-24T09_58_45Z.csv",
+            low_memory=False,
+        )),
+        "occupancy": prepare_bedroom_occupancy(pd.read_csv(
+            DATASETS_DIR / "TS052_occupancy_rating_for_bedrooms" / "TS052-2021-5-filtered-2026-09-24T09_59_23Z.csv",
+            low_memory=False,
+        )),
+    }
+
+
+@lru_cache(maxsize=1)
+def _get_lsoa_workbook_extractor():
+    extractor_path = BASE_DIR / "scripts" / "utils" / "_lincolnshire_xlsx.py"
+    spec = importlib.util.spec_from_file_location("lumhr_lsoa_xlsx", extractor_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load workbook extractor: {extractor_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.extract_lsoa_rows
+
+
+def _extract_area_energy_metrics(lsoa_codes: set[str]) -> list[pd.DataFrame]:
+    extract_lsoa_rows = _get_lsoa_workbook_extractor()
+    utils_source = BASE_DIR / "scripts" / "utils" / "source_data"
+    fuel_headers, fuel_rows, _ = extract_lsoa_rows(
+        utils_source / "fuel_poverty" / "2024" / "fuel-poverty-sub-regional-2026-2024-data-tables.xlsx",
+        "Table 4",
+        3,
+        "A",
+        lsoa_codes,
+    )
+    fuel = pd.DataFrame(fuel_rows, columns=fuel_headers)
+    fuel = fuel[["LSOA Code", "Proportion of households fuel poor (%)"]].copy()
+    fuel["LSOA_CODE"] = fuel["LSOA Code"].map(normalize_code)
+    fuel["Fuel_Poverty_Pct"] = parse_numeric(fuel["Proportion of households fuel poor (%)"])
+
+    gas_headers, gas_rows, _ = extract_lsoa_rows(
+        utils_source / "properties_not_connected_to_gas_network" / "LSOA_estimates_of_properties_not_connected_to_the_gas_network_2015-2024.xlsx",
+        "2024",
+        4,
+        "E",
+        lsoa_codes,
+    )
+    gas = pd.DataFrame(gas_rows, columns=gas_headers)
+    gas_code_column = find_column(gas, ["LSOA code"])
+    gas_percent_column = find_column(gas, ["Estimated percentage of properties not on the gas grid"])
+    gas = gas[[gas_code_column, gas_percent_column]].copy()
+    gas["LSOA_CODE"] = gas[gas_code_column].map(normalize_code)
+    gas_source_values = gas[gas_percent_column].astype(str).str.strip()
+    gas["Properties_Not_On_Gas_Grid_Pct"] = parse_numeric(
+        gas_source_values
+    ) * 100.0
+    gas["Properties_Not_On_Gas_Grid_Status"] = gas_source_values.map(
+        lambda value: "Suppressed in source" if value in {"", ".."} else None
+    )
+
+    return [
+        fuel[["LSOA_CODE", "Fuel_Poverty_Pct"]].drop_duplicates("LSOA_CODE"),
+        gas[["LSOA_CODE", "Properties_Not_On_Gas_Grid_Pct", "Properties_Not_On_Gas_Grid_Status"]].drop_duplicates("LSOA_CODE"),
+    ]
+
+
+def _get_area_lsoa_metrics(scope: str) -> pd.DataFrame:
+    """Return selected-area metrics for access, gap, and rural-risk scoring."""
+    if scope == "lincolnshire":
+        if scope in _AREA_METRICS_CACHE:
+            return _AREA_METRICS_CACHE[scope]
+        metrics = LSOA_METRICS.copy()
+        lsoa_codes = set(metrics["LSOA_CODE"].dropna().astype(str))
+        for component in _extract_area_energy_metrics(lsoa_codes):
+            for column in [name for name in component.columns if name != "LSOA_CODE"]:
+                source_column = f"{column}__complete_source"
+                supplemental = component[["LSOA_CODE", column]].drop_duplicates("LSOA_CODE")
+                supplemental = supplemental.rename(columns={column: source_column})
+                metrics = metrics.merge(supplemental, on="LSOA_CODE", how="left")
+                if column in metrics.columns:
+                    metrics[column] = metrics[column].combine_first(metrics[source_column])
+                else:
+                    metrics[column] = metrics[source_column]
+                metrics = metrics.drop(columns=[source_column])
+        _AREA_METRICS_CACHE[scope] = metrics
+        return metrics
+    if scope in _AREA_METRICS_CACHE:
+        return _AREA_METRICS_CACHE[scope]
+
+    area_data = _get_current_area_need_base(scope)
+    metrics = area_data["metrics"].copy()
+    lsoa_codes = set(metrics["LSOA_CODE"].dropna().astype(str))
+    shared = _get_national_access_risk_components()
+    components = [*shared.values(), *_extract_area_energy_metrics(lsoa_codes)]
+    for component in components:
+        if "LSOA_CODE" not in component.columns:
+            continue
+        component = component[component["LSOA_CODE"].astype(str).isin(lsoa_codes)]
+        component = component[[
+            "LSOA_CODE",
+            *[column for column in component.columns if column != "LSOA_CODE" and column not in metrics.columns],
+        ]]
+        metrics = metrics.merge(component, on="LSOA_CODE", how="left")
+    _AREA_METRICS_CACHE[scope] = metrics
+    return metrics
+
+
 @app.get("/api/access_scores")
 def access_scores_api():
+    scope = str(request.args.get("scope", "lincolnshire") or "lincolnshire").strip().lower()
+    if scope not in NEED_INDEX_GEOJSON_PATHS:
+        scope = "lincolnshire"
     try:
         mh002 = _parse_float_arg("mh002", 8.33)
         mh021 = _parse_float_arg("mh021", 8.33)
@@ -810,12 +1155,13 @@ def access_scores_api():
         "Car_Access",
         "Digital_Access",
     ]
-    missing = [c for c in required_cols if c not in LSOA_METRICS.columns]
+    metrics = _get_area_lsoa_metrics(scope)
+    missing = [c for c in required_cols if c not in metrics.columns]
     if missing:
         return jsonify({"error": f"Missing access columns: {', '.join(missing)}"}), 400
 
     scored = apply_access_index(
-        LSOA_METRICS, mh002, mh021, mh_pca, dep_pca, dep004, gp_pt, gp_car, hosp_pt, hosp_car, rural, car, digital
+        metrics, mh002, mh021, mh_pca, dep_pca, dep004, gp_pt, gp_car, hosp_pt, hosp_car, rural, car, digital
     )
 
     layers = {
@@ -936,6 +1282,9 @@ def access_scores_api():
 
 @app.get("/api/access_gap_scores")
 def access_gap_scores_api():
+    scope = str(request.args.get("scope", "lincolnshire") or "lincolnshire").strip().lower()
+    if scope not in NEED_INDEX_GEOJSON_PATHS:
+        scope = "lincolnshire"
     try:
         dep = _parse_float_arg("dep", 16.7)
         smi = _parse_float_arg("smi", 16.7)
@@ -966,7 +1315,8 @@ def access_gap_scores_api():
         return jsonify({"error": f"dwp_year must be one of {DWP_AVAILABLE_YEARS}"}), 400
 
     samhi_index_col, _ = get_samhi_columns(samhi_year)
-    if samhi_index_col not in LSOA_METRICS.columns:
+    metrics = _get_area_lsoa_metrics(scope)
+    if samhi_index_col not in metrics.columns:
         return jsonify({"error": f"Missing SAMHI column: {samhi_index_col}"}), 400
 
     access_required_cols = [
@@ -983,16 +1333,16 @@ def access_gap_scores_api():
         "Car_Access",
         "Digital_Access",
     ]
-    missing = [c for c in access_required_cols if c not in LSOA_METRICS.columns]
+    missing = [c for c in access_required_cols if c not in metrics.columns]
     if missing:
         return jsonify({"error": f"Missing access columns: {', '.join(missing)}"}), 400
 
-    scored_with_dwp = _attach_public_dwp_layer(LSOA_METRICS, dwp_year)
+    scored_with_dwp = _attach_public_dwp_layer(metrics, dwp_year)
     need_scored = apply_need_index(
         scored_with_dwp, dep, smi, prescribing, samhi_weight, samhi_index_col, dla_weight, pip_weight
     )
     access_scored = apply_access_index(
-        LSOA_METRICS, mh002, mh021, mh_pca, dep_pca, dep004, gp_pt, gp_car, hosp_pt, hosp_car, rural, car, digital
+        metrics, mh002, mh021, mh_pca, dep_pca, dep004, gp_pt, gp_car, hosp_pt, hosp_car, rural, car, digital
     )
 
     combined = need_scored[["LSOA_CODE", "Need_Index"]].merge(
@@ -1004,6 +1354,8 @@ def access_gap_scores_api():
         "dwp_pip_count",
         "dwp_dla_rate_pct",
         "dwp_pip_rate_pct",
+        "dwp_dla_source_status",
+        "dwp_pip_source_status",
         "dwp_population_source_year",
         "dla_pip_source",
     ]
@@ -1024,13 +1376,13 @@ def access_gap_scores_api():
         "Registration_Gap_Est",
         "List_Inflation_Est",
     ]
-    extra_join_cols = [c for c in pop_cols if c in LSOA_METRICS.columns]
+    extra_join_cols = [c for c in pop_cols if c in metrics.columns]
     if extra_join_cols:
-        combined = combined.merge(LSOA_METRICS[["LSOA_CODE", *extra_join_cols]], on="LSOA_CODE", how="left")
+        combined = combined.merge(metrics[["LSOA_CODE", *extra_join_cols]], on="LSOA_CODE", how="left")
 
-    lsoa_name_col = _get_lsoa_name_column(LSOA_METRICS)
+    lsoa_name_col = _get_lsoa_name_column(metrics)
     if lsoa_name_col:
-        combined = combined.merge(LSOA_METRICS[["LSOA_CODE", lsoa_name_col]], on="LSOA_CODE", how="left")
+        combined = combined.merge(metrics[["LSOA_CODE", lsoa_name_col]], on="LSOA_CODE", how="left")
 
     layers = {
         "Access_Gap_Index": _scores_to_dict(combined, "Access_Gap_Index"),
@@ -1058,8 +1410,10 @@ def access_gap_scores_api():
             "dwp_pip_count": _num_or_none(row.get("dwp_pip_count")),
             "dwp_dla_rate_pct": _num_or_none(row.get("dwp_dla_rate_pct")),
             "dwp_pip_rate_pct": _num_or_none(row.get("dwp_pip_rate_pct")),
+            "dwp_dla_source_status": _text_or_none(row.get("dwp_dla_source_status")),
+            "dwp_pip_source_status": _text_or_none(row.get("dwp_pip_source_status")),
             "dwp_population_source_year": _num_or_none(row.get("dwp_population_source_year")),
-            "dwp_source": str(row.get("dla_pip_source", "") or "") or None,
+            "dwp_source": _text_or_none(row.get("dla_pip_source")),
             "ruc21nm": ruc_text,
             "urban_rural_flag": flag_text,
             "is_rural": "rural" in ruc_text.lower(),
@@ -1217,8 +1571,10 @@ def _get_current_area_need_base(scope: str) -> dict[str, pd.DataFrame]:
         allocation_mapping_df["NUMBER_OF_PATIENTS"] / practice_totals.replace(0, np.nan)
     )
     allocated, _ = allocate_registers_to_lsoa(allocation_mapping_df, gp_master)
+    access_rates = allocate_access_rates_to_lsoa(allocation_mapping_df, gp_master)
     area = _get_samhi_area_metrics(scope).copy()
     area = area.merge(allocated, on="LSOA_CODE", how="left")
+    area = area.merge(access_rates, on="LSOA_CODE", how="left")
     area = area.merge(parkfields_by_lsoa, on="LSOA_CODE", how="left")
     pop_path = DATASETS_DIR / "population_estimates" / f"{scope}_lsoa_population_estimates_2024.csv"
     population = pd.read_csv(pop_path, low_memory=False)
@@ -1293,9 +1649,22 @@ def _get_current_area_need_metrics(scope: str, dwp_year: int) -> pd.DataFrame:
         _NEED_DWP_PANEL_CACHE = panel
     dwp = panel.loc[
         panel["year"].eq(dwp_year),
-        ["lsoa11", "dwp_dla_rate_pct", "dwp_pip_rate_pct"],
+        [
+            "lsoa11",
+            "dwp_dla_count",
+            "dwp_pip_count",
+            "dwp_dla_rate_pct",
+            "dwp_pip_rate_pct",
+        ],
     ].drop_duplicates("lsoa11", keep="last")
     metrics = metrics.merge(dwp, on="lsoa11", how="left")
+    has_dwp_record = metrics[[
+        "dwp_dla_count",
+        "dwp_pip_count",
+        "dwp_dla_rate_pct",
+        "dwp_pip_rate_pct",
+    ]].notna().any(axis=1)
+    metrics["dla_pip_source"] = np.where(has_dwp_record, "DWP_August", None)
     pip_status = _load_public_dwp_pip_suppression(str(BASE_DIR))
     pip_status = pip_status[pip_status["year"].eq(dwp_year)].drop(columns=["year"], errors="ignore")
     return metrics.merge(pip_status, on="LSOA_CODE", how="left")
@@ -1472,6 +1841,9 @@ def samhi_scores_api():
 
 @app.get("/api/rural_risk_scores")
 def rural_risk_scores_api():
+    scope = str(request.args.get("scope", "lincolnshire") or "lincolnshire").strip().lower()
+    if scope not in NEED_INDEX_GEOJSON_PATHS:
+        scope = "lincolnshire"
     try:
         rural_weight = _parse_float_arg("w_rural", 7.7)
         gp_pt_weight = _parse_float_arg("w_gp_pt", 7.7)
@@ -1493,7 +1865,7 @@ def rural_risk_scores_api():
     if dwp_year not in DWP_AVAILABLE_YEARS:
         return jsonify({"error": f"dwp_year must be one of {DWP_AVAILABLE_YEARS}"}), 400
 
-    scored = _attach_public_dwp_layer(LSOA_METRICS, dwp_year)
+    scored = _attach_public_dwp_layer(_get_area_lsoa_metrics(scope), dwp_year)
     scored = apply_rural_risk_index(
         scored,
         rural_weight=rural_weight,
@@ -1577,6 +1949,7 @@ def rural_risk_scores_api():
             "household_vulnerability_score": _num_or_none(row.get("Household_Vulnerability_Normalized")),
             "fuel_poverty_pct": _num_or_none(row.get("Fuel_Poverty_Pct")),
             "properties_not_on_gas_grid_pct": _num_or_none(row.get("Properties_Not_On_Gas_Grid_Pct")),
+            "properties_not_on_gas_grid_status": _text_or_none(row.get("Properties_Not_On_Gas_Grid_Status")),
             "tenure_households": _num_or_none(row.get("Tenure_Households")),
             "owner_occupied_hh_count": _num_or_none(row.get("Owner_Occupied_HH_Count")),
             "owner_occupied_pct": _num_or_none(row.get("Owner_Occupied_Pct")),
@@ -1603,8 +1976,10 @@ def rural_risk_scores_api():
             "dwp_pip_rate_pct": _num_or_none(row.get("dwp_pip_rate_pct")),
             "dwp_dla_count": _num_or_none(row.get("dwp_dla_count")),
             "dwp_pip_count": _num_or_none(row.get("dwp_pip_count")),
+            "dwp_dla_source_status": _text_or_none(row.get("dwp_dla_source_status")),
+            "dwp_pip_source_status": _text_or_none(row.get("dwp_pip_source_status")),
             "dwp_population_source_year": _num_or_none(row.get("dwp_population_source_year")),
-            "dwp_source": str(row.get("dla_pip_source", "") or "") or None,
+            "dwp_source": _text_or_none(row.get("dla_pip_source")),
         }
 
     return jsonify(

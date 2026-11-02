@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Lincolnshire Mental Health Access Gap Index | LUMHR{% endblock %}
+{% block title %}Mental Health Access Gap Index | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
 
 {% block content %}
@@ -11,7 +11,20 @@
       <h1>Access Gap Index</h1>
       <button class="sidebar-close-btn" id="sidebar_close_btn" type="button" title="Close Controls">&times;</button>
     </div>
-    <p class="muted">Adjust weights to recalculate LSOA access gap indices.</p>
+    <p class="muted">Choose a geographic area and adjust weights to recalculate LSOA access gap indices.</p>
+
+    <div class="control">
+      <label for="geographic_area"><strong>Geographic Area</strong></label>
+      <select id="geographic_area" style="width:100%; margin-top:.35rem;">
+        <option value="lincolnshire" selected>Lincolnshire</option>
+        <option value="north_lincolnshire">North Lincolnshire</option>
+        <option value="north_east_lincolnshire">North East Lincolnshire</option>
+        <option value="greater_lincolnshire">Greater Lincolnshire</option>
+        <option value="nottinghamshire">Nottinghamshire</option>
+        <option value="derbyshire">Derbyshire</option>
+        <option value="lincolnshire_nottinghamshire_derbyshire">Lincolnshire, Nottinghamshire and Derbyshire</option>
+      </select>
+    </div>
 
     <div class="quick-actions-bar">
       <button class="btn-action-sm" id="btn_reset_need_weights" type="button" title="Reset Need weights equally">↺ Reset Need</button>
@@ -195,10 +208,7 @@
     <div class="legend" id="status">Loading map and initial scores...</div>
 
     <div class="legend" style="margin-top:0.6rem;">
-      The GP registration data includes out-of-Lincolnshire LSOAs that are not in the boundary file.
-      Distinct out-of-area LSOAs: {{ out_of_area_lsoa_count_fmt }}.
-      Patient records in those LSOAs: {{ out_of_area_patients_fmt }}.
-      They are retained in GP allocation weights but excluded from Lincolnshire map polygons.
+      GP registration records outside the selected boundary are retained in GP allocation weights and excluded from map polygons.
     </div>
 
     <div class="legend" style="margin-top:0.75rem;">
@@ -219,7 +229,10 @@
 
 {% block scripts %}
 <script>
-  const geojsonUrl = "/datasets/{{ geojson_rel_path }}";
+  const geojsonByScope = {{ geojson_by_scope|tojson }};
+  let currentScope = "lincolnshire";
+  let areaLoadVersion = 0;
+  let mapUpdateTimer = null;
 
   let map;
   let geojsonLayer;
@@ -249,7 +262,7 @@
   };
 
   function getCode(feature) {
-    return feature?.properties?.CODE ?? feature?.properties?.LSOA_CODE ?? null;
+    return feature?.properties?.CODE ?? feature?.properties?.LSOA_CODE ?? feature?.properties?.LSOA21CD ?? feature?.properties?.lsoa21cd ?? null;
   }
 
   function getActiveLayerScores() {
@@ -416,12 +429,12 @@
         `<strong>Access Gap Index:</strong> ${detail.access_gap_index !== null && detail.access_gap_index !== undefined ? detail.access_gap_index.toFixed(4) : "N/A"}<br>` +
         `<strong>Need Index:</strong> ${detail.need_index !== null && detail.need_index !== undefined ? detail.need_index.toFixed(4) : "N/A"}<br>` +
         `<strong>Access Index:</strong> ${detail.access_index !== null && detail.access_index !== undefined ? detail.access_index.toFixed(4) : "N/A"}<br>` +
-        `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : "N/A"}<br>` +
-        `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : "N/A"}`;
+        `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : (detail.dwp_dla_source_status || "N/A")}<br>` +
+        `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : (detail.dwp_pip_source_status || "N/A")}`;
 
       if (detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined) {
-        popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : "N/A"}` +
-          `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : "N/A"}`;
+        popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : (detail.dwp_dla_source_status || "N/A")}` +
+          `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : (detail.dwp_pip_source_status || "N/A")}`;
         if (detail.dwp_source) popupHtml += `<br><strong>DWP source:</strong> ${detail.dwp_source}`;
       }
 
@@ -446,9 +459,12 @@
     });
   }
 
-  async function loadGpLayer() {
+  async function loadGpLayer(requestVersion = areaLoadVersion) {
+    if (gpLayer) map.removeLayer(gpLayer);
     gpLayer = L.layerGroup();
-    const resp = await fetch("/api/gp_locations");
+    const requestedScope = currentScope;
+    const resp = await fetch(`/api/gp_locations?scope=${encodeURIComponent(requestedScope)}`);
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
     if (!resp.ok) {
       return;
     }
@@ -615,7 +631,8 @@
     }
   }
 
-  async function updateMap() {
+  async function updateMap(requestVersion = areaLoadVersion) {
+    const requestedScope = currentScope;
     const dep = Number(document.getElementById("dep").value);
     const smi = Number(document.getElementById("smi").value);
     const prescribing = Number(document.getElementById("prescribing").value);
@@ -632,17 +649,20 @@
       dla: dla.toString(),
       pip: pip.toString(),
       samhi_year: samhiYear.toString(),
+      scope: requestedScope,
       ...Object.fromEntries(needSliderIds.map((id) => [id, Number(document.getElementById(id).value).toString()])),
       ...Object.fromEntries(accessSliderIds.map((id) => [id, Number(document.getElementById(id).value).toString()])),
     });
 
     const resp = await fetch(`/api/access_gap_scores?${params.toString()}`);
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
     if (!resp.ok) {
       document.getElementById("status").textContent = "Failed to fetch access gap scores.";
       return;
     }
 
     const payload = await resp.json();
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
     gapLayerScores = payload.layers || {};
     lsoaDetails = payload.lsoa_details || {};
 
@@ -650,6 +670,11 @@
 
     const activeCount = Object.keys(getActiveLayerScores()).length;
     document.getElementById("status").textContent = `Updated ${activeCount} LSOA scores.`;
+  }
+
+  function scheduleMapUpdate(requestVersion = areaLoadVersion) {
+    clearTimeout(mapUpdateTimer);
+    mapUpdateTimer = setTimeout(() => updateMap(requestVersion), 180);
   }
 
   function setupMobileDrawer() {
@@ -686,6 +711,7 @@
     const needBtn = document.getElementById("btn_reset_need_weights");
     if (needBtn) {
       needBtn.addEventListener("click", async () => {
+        clearTimeout(mapUpdateTimer);
         for (const id of needSliderIds) {
           document.getElementById(id).value = "16.7";
         }
@@ -697,6 +723,7 @@
     const accessBtn = document.getElementById("btn_reset_access_weights");
     if (accessBtn) {
       accessBtn.addEventListener("click", async () => {
+        clearTimeout(mapUpdateTimer);
         const equalVal = (100.0 / accessSliderIds.length).toFixed(1);
         for (const id of accessSliderIds) {
           document.getElementById(id).value = equalVal;
@@ -708,7 +735,26 @@
     }
   }
 
-  const lincolnshireBounds = [[52.64022, -0.82065], [53.61637, 0.35797]];
+  async function loadGeoJSON(requestVersion = areaLoadVersion) {
+    const requestedScope = currentScope;
+    const relativePath = geojsonByScope[requestedScope];
+    const resp = await fetch(`/datasets/${relativePath}`);
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
+    if (!resp.ok) throw new Error(`Failed to load boundaries for ${requestedScope}`);
+    const geojson = await resp.json();
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
+    if (geojsonLayer) map.removeLayer(geojsonLayer);
+    geojsonLayer = L.geoJSON(geojson, {
+      style: styleFeature,
+      onEachFeature: (feature, layer) => {
+        const code = getCode(feature) ?? "Unknown";
+        const name = feature?.properties?.NAME ?? feature?.properties?.LSOA21NM ?? "";
+        layer.bindTooltip(lsoaTooltipText(code, name));
+      }
+    }).addTo(map);
+    const bounds = geojsonLayer.getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { animate: false, padding: [12, 12] });
+  }
 
   async function init() {
     setupMobileDrawer();
@@ -717,52 +763,54 @@
     map = L.map("map", {
       zoomControl: true,
       preferCanvas: true
-    }).fitBounds(lincolnshireBounds, { animate: false });
+    }).setView([53.1, -0.6], 8);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors"
     }).addTo(map);
 
-    const resp = await fetch(geojsonUrl);
-    const geojson = await resp.json();
-
-    geojsonLayer = L.geoJSON(geojson, {
-      style: styleFeature,
-      onEachFeature: (feature, layer) => {
-        const code = getCode(feature) ?? "Unknown";
-        const name = feature?.properties?.NAME ?? "";
-        layer.bindTooltip(lsoaTooltipText(code, name));
-      }
-    }).addTo(map);
-
     addMapLegendControl();
+    await Promise.all([updateMap(), loadGeoJSON()]);
     await loadGpLayer();
     syncGpLayerVisibility();
 
-    document.getElementById("samhi_year").addEventListener("input", async () => {
+    document.getElementById("samhi_year").addEventListener("input", () => {
       updateWeightText();
-      await updateMap();
+      scheduleMapUpdate();
     });
 
     for (const id of needSliderIds) {
-      document.getElementById(id).addEventListener("input", async () => {
+      document.getElementById(id).addEventListener("input", () => {
         rebalanceWeights(needSliderIds, id);
         updateWeightText();
-        await updateMap();
+        scheduleMapUpdate();
       });
     }
 
     for (const id of accessSliderIds) {
-      document.getElementById(id).addEventListener("input", async () => {
+      document.getElementById(id).addEventListener("input", () => {
         rebalanceWeights(accessSliderIds, id);
         updateWeightText();
-        await updateMap();
+        scheduleMapUpdate();
       });
     }
 
+    document.getElementById("geographic_area").addEventListener("change", async (event) => {
+      currentScope = event.target.value;
+      const requestVersion = ++areaLoadVersion;
+      clearTimeout(mapUpdateTimer);
+      document.getElementById("status").textContent = "Loading selected area...";
+      try {
+        await Promise.all([updateMap(requestVersion), loadGeoJSON(requestVersion)]);
+        await loadGpLayer(requestVersion);
+        syncGpLayerVisibility();
+      } catch (error) {
+        if (requestVersion === areaLoadVersion) document.getElementById("status").textContent = error.message;
+      }
+    });
+
     updateWeightText();
-    await updateMap();
   }
 
   window.addEventListener("load", init);

@@ -217,33 +217,43 @@ def allocate_registers_to_lsoa(mapping_df: pd.DataFrame, gp_df: pd.DataFrame) ->
         alloc["Antidepressant_Items"].notna(), 0
     )
 
-    dep_missing = alloc.groupby("LSOA_CODE")["Dep_Register"].apply(lambda values: values.isna().any())
-    smi_missing = alloc.groupby("LSOA_CODE")["SMI_Register"].apply(lambda values: values.isna().any())
+    alloc["Depression_Covered_Patients"] = alloc["NUMBER_OF_PATIENTS"].where(
+        alloc["Dep_Register"].notna(), 0
+    )
+    alloc["SMI_Covered_Patients"] = alloc["NUMBER_OF_PATIENTS"].where(
+        alloc["SMI_Register"].notna(), 0
+    )
     lsoa_dep = alloc.groupby("LSOA_CODE", as_index=False)["Allocated_Depression"].sum(min_count=1)
     lsoa_smi = alloc.groupby("LSOA_CODE", as_index=False)["Allocated_SMI"].sum(min_count=1)
     lsoa_rx = alloc.groupby("LSOA_CODE", as_index=False)["Allocated_Antidepressant_Items"].sum(min_count=1)
+    lsoa_dep_covered = alloc.groupby("LSOA_CODE", as_index=False)["Depression_Covered_Patients"].sum()
+    lsoa_smi_covered = alloc.groupby("LSOA_CODE", as_index=False)["SMI_Covered_Patients"].sum()
     lsoa_rx_covered = alloc.groupby("LSOA_CODE", as_index=False)["Antidepressant_Covered_Patients"].sum()
     lsoa_list = alloc.groupby("LSOA_CODE", as_index=False)["NUMBER_OF_PATIENTS"].sum()
 
     lsoa = lsoa_list.merge(lsoa_dep, on="LSOA_CODE", how="left").merge(lsoa_smi, on="LSOA_CODE", how="left").merge(
         lsoa_rx, on="LSOA_CODE", how="left"
+    ).merge(lsoa_dep_covered, on="LSOA_CODE", how="left").merge(
+        lsoa_smi_covered, on="LSOA_CODE", how="left"
     ).merge(lsoa_rx_covered, on="LSOA_CODE", how="left")
     lsoa = lsoa.rename(columns={"NUMBER_OF_PATIENTS": "LSOA_Total_List"})
 
-    lsoa["Depression_Prevalence"] = safe_divide(lsoa["Allocated_Depression"], lsoa["LSOA_Total_List"])
-    lsoa["SMI_Prevalence"] = safe_divide(lsoa["Allocated_SMI"], lsoa["LSOA_Total_List"])
+    lsoa["Depression_Prevalence"] = safe_divide(
+        lsoa["Allocated_Depression"], lsoa["Depression_Covered_Patients"]
+    )
+    lsoa["SMI_Prevalence"] = safe_divide(lsoa["Allocated_SMI"], lsoa["SMI_Covered_Patients"])
+    lsoa["Depression_Coverage_Pct"] = safe_divide(
+        lsoa["Depression_Covered_Patients"], lsoa["LSOA_Total_List"]
+    ) * 100.0
+    lsoa["SMI_Coverage_Pct"] = safe_divide(
+        lsoa["SMI_Covered_Patients"], lsoa["LSOA_Total_List"]
+    ) * 100.0
     lsoa["Antidepressant_Items_Per_Patient"] = safe_divide(
         lsoa["Allocated_Antidepressant_Items"], lsoa["Antidepressant_Covered_Patients"]
     )
     lsoa["Antidepressant_Coverage_Pct"] = safe_divide(
         lsoa["Antidepressant_Covered_Patients"], lsoa["LSOA_Total_List"]
     ) * 100.0
-    for output, missing in [
-        ("Depression_Prevalence", dep_missing),
-        ("SMI_Prevalence", smi_missing),
-    ]:
-        lsoa[output] = lsoa[output].where(~lsoa["LSOA_CODE"].map(missing).fillna(False))
-
     return lsoa, mismatch_summary
 
 
@@ -259,26 +269,34 @@ ACCESS_RATE_COLUMNS = {
 def allocate_access_rates_to_lsoa(mapping_df: pd.DataFrame, gp_df: pd.DataFrame) -> pd.DataFrame:
     """Patient-weighted average of GP-level QOF intervention/PCA rates, rolled up to LSOA."""
     rate_source_cols = [c for c in ACCESS_RATE_COLUMNS if c in gp_df.columns]
+    if not rate_source_cols:
+        return pd.DataFrame(columns=["LSOA_CODE"])
+
     alloc = mapping_df.merge(
         gp_df[["PRACTICE_CODE", *rate_source_cols]],
         on="PRACTICE_CODE",
         how="left",
     )
+    lsoa_codes = alloc["LSOA_CODE"]
+    patient_counts = alloc["NUMBER_OF_PATIENTS"]
 
-    rows = []
-    for lsoa_code, group in alloc.groupby("LSOA_CODE"):
-        row: dict[str, object] = {"LSOA_CODE": lsoa_code}
-        for src_col in rate_source_cols:
-            out_col = ACCESS_RATE_COLUMNS[src_col]
-            valid = group.dropna(subset=[src_col])
-            weight_sum = valid["NUMBER_OF_PATIENTS"].sum()
-            if weight_sum > 0:
-                row[out_col] = float((valid[src_col] * valid["NUMBER_OF_PATIENTS"]).sum() / weight_sum)
-            else:
-                row[out_col] = np.nan
-        rows.append(row)
+    # Compute the patient-weighted mean for each LSOA/rate in a few pandas
+    # groupby operations. Iterating through every LSOA and rate in Python made
+    # the first load of an area take over a minute for the full registration file.
+    weighted_rates = alloc[rate_source_cols].multiply(patient_counts, axis=0)
+    numerators = weighted_rates.groupby(lsoa_codes, sort=False).sum(min_count=1)
+    denominators = pd.DataFrame(
+        {
+            column: patient_counts.where(alloc[column].notna())
+            for column in rate_source_cols
+        },
+        index=alloc.index,
+    ).groupby(lsoa_codes, sort=False).sum(min_count=1)
 
-    return pd.DataFrame(rows)
+    result = numerators.div(denominators.where(denominators.gt(0)))
+    result = result.rename(columns=ACCESS_RATE_COLUMNS)
+    result.index.name = "LSOA_CODE"
+    return result.reset_index()
 
 
 def prepare_gp_locations(df: pd.DataFrame) -> pd.DataFrame:

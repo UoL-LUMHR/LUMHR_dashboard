@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Lincolnshire Mental Health Access Index | LUMHR{% endblock %}
+{% block title %}Mental Health Access Index | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
 
 {% block content %}
@@ -11,7 +11,20 @@
       <h1>Mental Health Access Index</h1>
       <button class="sidebar-close-btn" id="sidebar_close_btn" type="button" title="Close Controls">&times;</button>
     </div>
-    <p class="muted">Adjust weights to recalculate LSOA access indices.</p>
+    <p class="muted">Choose a geographic area and adjust weights to recalculate LSOA access indices.</p>
+
+    <div class="control">
+      <label for="geographic_area"><strong>Geographic Area</strong></label>
+      <select id="geographic_area" style="width:100%; margin-top:.35rem;">
+        <option value="lincolnshire" selected>Lincolnshire</option>
+        <option value="north_lincolnshire">North Lincolnshire</option>
+        <option value="north_east_lincolnshire">North East Lincolnshire</option>
+        <option value="greater_lincolnshire">Greater Lincolnshire</option>
+        <option value="nottinghamshire">Nottinghamshire</option>
+        <option value="derbyshire">Derbyshire</option>
+        <option value="lincolnshire_nottinghamshire_derbyshire">Lincolnshire, Nottinghamshire and Derbyshire</option>
+      </select>
+    </div>
 
     <div class="quick-actions-bar">
       <button class="btn-action-sm" id="btn_reset_weights" type="button" title="Reset all 12 indicators to equal weights">↺ Reset Weights (8.3% each)</button>
@@ -161,10 +174,7 @@
     <div class="legend" id="status">Loading map and initial scores...</div>
 
     <div class="legend" style="margin-top:0.6rem;">
-      The GP registration data includes out-of-Lincolnshire LSOAs that are not in the boundary file.
-      Distinct out-of-area LSOAs: {{ out_of_area_lsoa_count_fmt }}.
-      Patient records in those LSOAs: {{ out_of_area_patients_fmt }}.
-      They are retained in GP allocation weights but excluded from Lincolnshire map polygons.
+      GP registration records outside the selected boundary are retained in GP allocation weights and excluded from map polygons.
     </div>
 
     <div class="legend" style="margin-top:0.75rem;">
@@ -185,7 +195,10 @@
 
 {% block scripts %}
 <script>
-  const geojsonUrl = "/datasets/{{ geojson_rel_path }}";
+  const geojsonByScope = {{ geojson_by_scope|tojson }};
+  let currentScope = "lincolnshire";
+  let areaLoadVersion = 0;
+  let mapUpdateTimer = null;
 
   let map;
   let geojsonLayer;
@@ -222,7 +235,7 @@
   };
 
   function getCode(feature) {
-    return feature?.properties?.CODE ?? feature?.properties?.LSOA_CODE ?? null;
+    return feature?.properties?.CODE ?? feature?.properties?.LSOA_CODE ?? feature?.properties?.LSOA21CD ?? feature?.properties?.lsoa21cd ?? null;
   }
 
   function getActiveLayerScores() {
@@ -406,9 +419,12 @@
     });
   }
 
-  async function loadGpLayer() {
+  async function loadGpLayer(requestVersion = areaLoadVersion) {
+    if (gpLayer) map.removeLayer(gpLayer);
     gpLayer = L.layerGroup();
-    const resp = await fetch("/api/gp_locations");
+    const requestedScope = currentScope;
+    const resp = await fetch(`/api/gp_locations?scope=${encodeURIComponent(requestedScope)}`);
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
     if (!resp.ok) {
       return;
     }
@@ -586,18 +602,22 @@
     }
   }
 
-  async function updateMap() {
+  async function updateMap(requestVersion = areaLoadVersion) {
+    const requestedScope = currentScope;
     const params = new URLSearchParams(
       Object.fromEntries(sliderIds.map((id) => [id, Number(document.getElementById(id).value).toString()]))
     );
+    params.set("scope", requestedScope);
 
     const resp = await fetch(`/api/access_scores?${params.toString()}`);
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
     if (!resp.ok) {
       document.getElementById("status").textContent = "Failed to fetch access scores.";
       return;
     }
 
     const payload = await resp.json();
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
     accessLayerScores = payload.layers || {};
     lsoaDetails = payload.lsoa_details || {};
 
@@ -605,6 +625,11 @@
 
     const activeCount = Object.keys(getActiveLayerScores()).length;
     document.getElementById("status").textContent = `Updated ${activeCount} LSOA scores.`;
+  }
+
+  function scheduleMapUpdate(requestVersion = areaLoadVersion) {
+    clearTimeout(mapUpdateTimer);
+    mapUpdateTimer = setTimeout(() => updateMap(requestVersion), 180);
   }
 
   function setupMobileDrawer() {
@@ -641,6 +666,7 @@
     const btn = document.getElementById("btn_reset_weights");
     if (btn) {
       btn.addEventListener("click", async () => {
+        clearTimeout(mapUpdateTimer);
         const equalVal = (100.0 / sliderIds.length).toFixed(1);
         for (const id of sliderIds) {
           document.getElementById(id).value = equalVal;
@@ -652,7 +678,26 @@
     }
   }
 
-  const lincolnshireBounds = [[52.64022, -0.82065], [53.61637, 0.35797]];
+  async function loadGeoJSON(requestVersion = areaLoadVersion) {
+    const requestedScope = currentScope;
+    const relativePath = geojsonByScope[requestedScope];
+    const resp = await fetch(`/datasets/${relativePath}`);
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
+    if (!resp.ok) throw new Error(`Failed to load boundaries for ${requestedScope}`);
+    const geojson = await resp.json();
+    if (requestVersion !== areaLoadVersion || requestedScope !== currentScope) return;
+    if (geojsonLayer) map.removeLayer(geojsonLayer);
+    geojsonLayer = L.geoJSON(geojson, {
+      style: styleFeature,
+      onEachFeature: (feature, layer) => {
+        const code = getCode(feature) ?? "Unknown";
+        const name = feature?.properties?.NAME ?? feature?.properties?.LSOA21NM ?? "";
+        layer.bindTooltip(lsoaTooltipText(code, name));
+      }
+    }).addTo(map);
+    const bounds = geojsonLayer.getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { animate: false, padding: [12, 12] });
+  }
 
   async function init() {
     setupMobileDrawer();
@@ -661,36 +706,39 @@
     map = L.map("map", {
       zoomControl: true,
       preferCanvas: true
-    }).fitBounds(lincolnshireBounds, { animate: false });
+    }).setView([53.1, -0.6], 8);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors"
     }).addTo(map);
 
-    const resp = await fetch(geojsonUrl);
-    const geojson = await resp.json();
-
-    geojsonLayer = L.geoJSON(geojson, {
-      style: styleFeature,
-      onEachFeature: (feature, layer) => {
-        const code = getCode(feature) ?? "Unknown";
-        const name = feature?.properties?.NAME ?? "";
-        layer.bindTooltip(lsoaTooltipText(code, name));
-      }
-    }).addTo(map);
-
     addMapLegendControl();
+    await Promise.all([updateMap(), loadGeoJSON()]);
     await loadGpLayer();
     syncGpLayerVisibility();
 
     for (const id of sliderIds) {
-      document.getElementById(id).addEventListener("input", async () => {
+      document.getElementById(id).addEventListener("input", () => {
         rebalanceWeights(id);
         updateWeightText();
-        await updateMap();
+        scheduleMapUpdate();
       });
     }
+
+    document.getElementById("geographic_area").addEventListener("change", async (event) => {
+      currentScope = event.target.value;
+      const requestVersion = ++areaLoadVersion;
+      clearTimeout(mapUpdateTimer);
+      document.getElementById("status").textContent = "Loading selected area...";
+      try {
+        await Promise.all([updateMap(requestVersion), loadGeoJSON(requestVersion)]);
+        await loadGpLayer(requestVersion);
+        syncGpLayerVisibility();
+      } catch (error) {
+        if (requestVersion === areaLoadVersion) document.getElementById("status").textContent = error.message;
+      }
+    });
 
     updateWeightText();
     await updateMap();

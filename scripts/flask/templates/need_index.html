@@ -35,6 +35,7 @@
         <li>Depression prevalence, SMI prevalence, antidepressant items per patient, SAMHI, and the public DLA/PIP rates are min-max normalised to [0,1].</li>
         <li>Antidepressant items per patient uses registrations linked to practices with a May prescribing row; each LSOA popup reports the share of registrations covered. Missing practice rows are excluded from that rate, not treated as zero.</li>
         <li>Need Index is a weighted composite of up to six indicators; the DLA and PIP rates are separately weighted need signals.</li>
+        <li>Min-max scaling is recalculated for the selected geographic area, so the same LSOA can have a different Need Index when you change the area.</li>
         <li>The DLA/PIP rates are public-data indicators and are not official SAMHI components.</li>
         <li>A DWP value suppressed in the source is shown as “Suppressed in DWP source” and is unavailable to the index.</li>
         <li>The default DLA/PIP snapshot is 2025, so scores are current public-data composites rather than temporally matched historical SAMHI values.</li>
@@ -379,6 +380,9 @@
       const pipRateDisplay = detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined
         ? detail.dwp_pip_rate_pct.toFixed(2) + "%"
         : (detail.dwp_pip_source_status || "N/A");
+      const dlaRateDisplay = detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined
+        ? detail.dwp_dla_rate_pct.toFixed(2) + "%"
+        : (detail.dwp_dla_source_status || "N/A");
 
       let popupHtml =
         `<strong>LSOA:</strong> ${code}<br>` +
@@ -386,16 +390,18 @@
         `<strong>Rural / Urban Classification:</strong> ${detail.ruc21nm || (detail.is_rural ? "Rural" : "Urban") || "N/A"}<br>` +
         `<strong>Need Index:</strong> ${detail.need_index !== null && detail.need_index !== undefined ? detail.need_index.toFixed(4) : "N/A"}<br>` +
         `<strong>Depression Prevalence (%):</strong> ${detail.depression_prevalence_pct !== null && detail.depression_prevalence_pct !== undefined ? detail.depression_prevalence_pct.toFixed(2) : "N/A"}<br>` +
+        `${detail.depression_coverage_pct !== null && detail.depression_coverage_pct !== undefined ? `<strong>Depression practice data coverage:</strong> ${detail.depression_coverage_pct.toFixed(1)}% of registered patients<br>` : ""}` +
         `<strong>SMI Prevalence (%):</strong> ${detail.smi_prevalence_pct !== null && detail.smi_prevalence_pct !== undefined ? detail.smi_prevalence_pct.toFixed(2) : "N/A"}<br>` +
+        `${detail.smi_coverage_pct !== null && detail.smi_coverage_pct !== undefined ? `<strong>SMI practice data coverage:</strong> ${detail.smi_coverage_pct.toFixed(1)}% of registered patients<br>` : ""}` +
         `<strong>Antidepressant Items Per Patient:</strong> ${detail.antidepressant_items_per_patient !== null && detail.antidepressant_items_per_patient !== undefined ? detail.antidepressant_items_per_patient.toFixed(4) : "N/A"}<br>` +
         `<strong>Antidepressant practice data coverage:</strong> ${detail.antidepressant_coverage_pct !== null && detail.antidepressant_coverage_pct !== undefined ? detail.antidepressant_coverage_pct.toFixed(1) + "% of registered patients" : "N/A"}<br>` +
         `<strong>${samhiLegendLabel}:</strong> ${detail.samhi_selected !== null && detail.samhi_selected !== undefined ? detail.samhi_selected.toFixed(4) : "N/A"}<br>` +
         `<strong>Public SAMHI-3 proxy (${publicSamhi3Year}):</strong> ${detail.public_samhi3_proxy !== null && detail.public_samhi3_proxy !== undefined ? detail.public_samhi3_proxy.toFixed(4) : "N/A"}${publicSamhi3Coverage}<br>` +
-        `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>DWP DLA rate:</strong> ${dlaRateDisplay}<br>` +
         `<strong>DWP PIP rate:</strong> ${pipRateDisplay}`;
 
       if (detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined) {
-        popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : "N/A"}` +
+        popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : (detail.dwp_dla_source_status || "N/A")}` +
           `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : (detail.dwp_pip_source_status || "N/A")}`;
         if (detail.dwp_source) popupHtml += `<br><strong>DWP source:</strong> ${detail.dwp_source}`;
       }
@@ -674,7 +680,7 @@
 
     const params = new URLSearchParams({
       dep: dep.toString(),
-      smi: (requestedScope === "lincolnshire" ? smi : 0).toString(),
+      smi: smi.toString(),
       prescribing: prescribing.toString(),
       samhi: samhi.toString(),
       dla: dla.toString(),
