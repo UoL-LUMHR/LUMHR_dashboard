@@ -765,6 +765,22 @@
           grid-template-columns: 1fr;
         }
       }
+
+      .leaflet-popup-content details.map-popup-details {
+        margin-top: 0.45rem;
+        padding-top: 0.35rem;
+        border-top: 1px solid #d7e0e5;
+      }
+
+      .leaflet-popup-content details.map-popup-details summary {
+        color: #24566d;
+        cursor: pointer;
+        font-weight: 650;
+      }
+
+      .leaflet-popup-content details.map-popup-details > div {
+        margin-top: 0.4rem;
+      }
     </style>
     {% block head_extra %}{% endblock %}
     {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast', '/public_samhi3'] %}

@@ -22,6 +22,9 @@
       <p class="muted" style="margin-top:0.6rem;">
         This Index proportionally allocates GP-level QOF registers to LSOAs using the GP patient registration data.
       </p>
+      <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Scale:</strong>
+        0 is the lowest relative need and 1 is the highest relative need. These are theoretical endpoints; the map legend shows the observed minimum and maximum for the selected area.
+      </p>
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Allocation equations:</strong></p>
       <ul class="muted" style="margin-top:0; padding-left:1.1rem;">
         <li>GP total mapped patients: sum of NUMBER_OF_PATIENTS across all mapped LSOAs for each GP.</li>
@@ -388,7 +391,8 @@
         `<strong>LSOA:</strong> ${code}<br>` +
         `<strong>LSOA Name:</strong> ${detail.lsoa_name || name || "N/A"}<br>` +
         `<strong>Rural / Urban Classification:</strong> ${detail.ruc21nm || (detail.is_rural ? "Rural" : "Urban") || "N/A"}<br>` +
-        `<strong>Need Index:</strong> ${detail.need_index !== null && detail.need_index !== undefined ? detail.need_index.toFixed(4) : "N/A"}<br>` +
+        `<strong>Need Index:</strong> ${detail.need_index !== null && detail.need_index !== undefined ? detail.need_index.toFixed(4) : "N/A"}` +
+        `<details class="map-popup-details"><summary>Need indicators</summary><div>` +
         `<strong>Depression Prevalence (%):</strong> ${detail.depression_prevalence_pct !== null && detail.depression_prevalence_pct !== undefined ? detail.depression_prevalence_pct.toFixed(2) : "N/A"}<br>` +
         `${detail.depression_coverage_pct !== null && detail.depression_coverage_pct !== undefined ? `<strong>Depression practice data coverage:</strong> ${detail.depression_coverage_pct.toFixed(1)}% of registered patients<br>` : ""}` +
         `<strong>SMI Prevalence (%):</strong> ${detail.smi_prevalence_pct !== null && detail.smi_prevalence_pct !== undefined ? detail.smi_prevalence_pct.toFixed(2) : "N/A"}<br>` +
@@ -403,12 +407,12 @@
       if (detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined) {
         popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : (detail.dwp_dla_source_status || "N/A")}` +
           `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : (detail.dwp_pip_source_status || "N/A")}`;
-        if (detail.dwp_source) popupHtml += `<br><strong>DWP source:</strong> ${detail.dwp_source}`;
       }
+      popupHtml += `</div></details>`;
 
       if (detail.ons_pop_total !== null && detail.ons_pop_total !== undefined) {
         popupHtml +=
-          `<hr style="margin:6px 0;">` +
+          `<details class="map-popup-details"><summary>Population and GP registration</summary><div>` +
           `<strong>Resident Population Estimate (ONS Mid-2024):</strong> ${Math.round(detail.ons_pop_total).toLocaleString()}<br>` +
           `<strong>Adults 18+ (Estimate):</strong> ${detail.ons_pop_18plus !== null && detail.ons_pop_18plus !== undefined ? Math.round(detail.ons_pop_18plus).toLocaleString() : "N/A"}${detail.pct_18plus !== null && detail.pct_18plus !== undefined ? ` (${detail.pct_18plus.toFixed(1)}%)` : ""}<br>` +
           `<strong>Older Adults 65+ (Estimate):</strong> ${detail.ons_pop_65plus !== null && detail.ons_pop_65plus !== undefined ? Math.round(detail.ons_pop_65plus).toLocaleString() : "N/A"}${detail.pct_65plus !== null && detail.pct_65plus !== undefined ? ` (${detail.pct_65plus.toFixed(1)}%)` : ""}<br>` +
@@ -429,6 +433,7 @@
         } else if (detail.registration_gap_est && detail.registration_gap_est > 0) {
           popupHtml += `<br><strong>Unregistered / Cross-Border Difference:</strong> -${Math.round(detail.registration_gap_est).toLocaleString()}`;
         }
+        popupHtml += `</div></details>`;
       }
 
       layer.bindPopup(popupHtml, { maxWidth: 360 });
@@ -523,6 +528,7 @@
     const minEl = document.getElementById("map_colorbar_min");
     const maxEl = document.getElementById("map_colorbar_max");
     const titleEl = document.getElementById("map_colorbar_title");
+    const noteEl = document.getElementById("map_colorbar_note");
 
     if (!bar || !minEl || !maxEl || !titleEl) {
       return;
@@ -549,6 +555,13 @@
     titleEl.textContent = layerLabel;
     minEl.textContent = formatLegendNumber(minScore, currentLayerKey);
     maxEl.textContent = formatLegendNumber(maxScore, currentLayerKey);
+    if (noteEl) {
+      const note = currentLayerKey === "Need_Index"
+        ? "0 = lowest relative need\n1 = highest relative need"
+        : "";
+      noteEl.textContent = note;
+      noteEl.hidden = !note;
+    }
   }
 
   function addMapLegendControl() {
@@ -557,7 +570,7 @@
       const container = L.DomUtil.create("div", "leaflet-bar legend-control");
       container.style.background = "#ffffff";
       container.style.padding = "10px";
-      container.style.minWidth = "260px";
+      container.style.minWidth = "220px";
       container.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
       container.style.borderRadius = "6px";
       container.style.border = "1px solid #d7e2e8";
@@ -580,6 +593,8 @@
             <span id="map_colorbar_min">0.0000</span>
             <span id="map_colorbar_max">1.0000</span>
           </div>
+          <div id="map_colorbar_note" style="font-size:11px; line-height:1.35; color:#4f5f69; margin-top:5px; white-space:pre-line; max-width:220px;">0 = lowest relative need
+1 = highest relative need.</div>
         </div>
         <div style="border-top:1px solid #e4ecef; padding-top:8px; margin-top:6px;">
           <label style="display:block;"><input id="map_show_gp_locations" type="checkbox" checked> GP Locations</label>

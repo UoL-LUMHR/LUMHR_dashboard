@@ -36,6 +36,9 @@
         The Access Index is a composite index that normalises and combines GP-level QOF service-accessibility
         indicators, rolled up to LSOA level using patient-weighted averages from the GP patient registration data.
       </p>
+      <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Scale:</strong>
+        0 is the lowest relative access and 1 is the highest relative access. These are theoretical endpoints; the map legend shows the observed minimum and maximum for the selected area.
+      </p>
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Allocation equations:</strong></p>
       <ul class="muted" style="margin-top:0; padding-left:1.1rem;">
         <li>Weight(i,j): NUMBER_OF_PATIENTS(i,j) / GP_Total_Mapped_Patients(j) for LSOA i, GP j.</li>
@@ -43,13 +46,14 @@
       </ul>
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Access Index:</strong></p>
       <ul class="muted" style="margin-top:0; padding-left:1.1rem;">
+        <li>Min-max scaling is recalculated for the selected geographic area, so the same LSOA can have a different Access Index when you change the area.</li>
         <li>MH002 and MH021 intervention rates and DEP004 intervention rate are min-max normalised to [0,1] (higher = better access).</li>
         <li>Mental Health and Depression Overall PCA (exception) rates are min-max normalised then inverted (1 - normalised), since a higher exception rate reduces effective access.</li>
         <li>GP and Hospital travel times (Public Transport/Walking and Car, 2019) are min-max normalised then inverted, since longer journeys reduce effective access.</li>
         <li>Rural Access is derived from the ONS Rural Urban Classification (2021): each LSOA's remoteness category is mapped to an isolation scale from 0 (Urban: Nearer to a major town or city) to 5 (Smaller rural: Further from a major town or city), min-max normalised, then inverted so higher = better access.</li>
         <li>Household Car/Van Availability is derived from ONS Census 2021 (TS045) across 5 categories (No cars: 0, 1 car: 1, 2 cars: 2, 3+ cars: 3), weighted to calculate average vehicles per household, and min-max normalised so higher = better transport access.</li>
         <li>Digital Accessibility is derived from the Digital Exclusion Risk Index (DERI v1.6, GMCA): combines 10 indicators across Demography, Deprivation, and Broadband infrastructure into a 0–10 risk score, min-max normalised and inverted so higher = better digital access.</li>
-        <li>Access Index = (MH002_Normalised * w_mh002) + (MH021_Normalised * w_mh021) + (MH_PCA_Inverted * w_mh_pca) + (Dep_PCA_Inverted * w_dep_pca) + (DEP004_Normalised * w_dep004) + (GP_PT_Inverted * w_gp_pt) + (GP_Car_Inverted * w_gp_car) + (Hosp_PT_Inverted * w_hosp_pt) + (Hosp_Car_Inverted * w_hosp_car) + (Rural_Access * w_rural) + (Car_Access * w_car) + (Digital_Access * w_digital)</li>
+        <!-- <li>Access Index = (MH002_Normalised * w_mh002) + (MH021_Normalised * w_mh021) + (MH_PCA_Inverted * w_mh_pca) + (Dep_PCA_Inverted * w_dep_pca) + (DEP004_Normalised * w_dep004) + (GP_PT_Inverted * w_gp_pt) + (GP_Car_Inverted * w_gp_car) + (Hosp_PT_Inverted * w_hosp_pt) + (Hosp_Car_Inverted * w_hosp_car) + (Rural_Access * w_rural) + (Car_Access * w_car) + (Digital_Access * w_digital)</li> -->
       </ul>
     </details>
 
@@ -385,22 +389,26 @@
         `<strong>LSOA:</strong> ${code}<br>` +
         `<strong>LSOA Name:</strong> ${detail.lsoa_name || name || "N/A"}<br>` +
         `<strong>Access Index:</strong> ${detail.access_index !== null && detail.access_index !== undefined ? detail.access_index.toFixed(4) : "N/A"}<br>` +
+        `<strong>GP Travel Time (PT / Walk):</strong> ${detail.gp_pt_time !== null && detail.gp_pt_time !== undefined ? detail.gp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
+        `<strong>GP Travel Time (Car):</strong> ${detail.gp_car_time !== null && detail.gp_car_time !== undefined ? detail.gp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
+        `<strong>Rural Access (0-1):</strong> ${detail.rural_access !== null && detail.rural_access !== undefined ? detail.rural_access.toFixed(2) : "N/A"}${detail.ruc21nm ? ` (${detail.ruc21nm})` : ""}` +
+        `<details class="map-popup-details"><summary>Practice care measures</summary><div>` +
         `<strong>MH002 (SMI Care Plan) (%):</strong> ${detail.mh002_pct !== null && detail.mh002_pct !== undefined ? detail.mh002_pct.toFixed(2) + "%" : "N/A"}<br>` +
         `<strong>MH021 (SMI Health Check) (%):</strong> ${detail.mh021_pct !== null && detail.mh021_pct !== undefined ? detail.mh021_pct.toFixed(2) + "%" : "N/A"}<br>` +
         `<strong>Mental Health PCA (Exceptions) (%):</strong> ${detail.mh_pca_pct !== null && detail.mh_pca_pct !== undefined ? detail.mh_pca_pct.toFixed(2) + "%" : "N/A"}<br>` +
         `<strong>Depression PCA (Exceptions) (%):</strong> ${detail.dep_pca_pct !== null && detail.dep_pca_pct !== undefined ? detail.dep_pca_pct.toFixed(2) + "%" : "N/A"}<br>` +
-        `<strong>DEP004 (Depression Review) (%):</strong> ${detail.dep004_pct !== null && detail.dep004_pct !== undefined ? detail.dep004_pct.toFixed(2) + "%" : "N/A"}<br>` +
-        `<strong>GP Travel Time (PT / Walk):</strong> ${detail.gp_pt_time !== null && detail.gp_pt_time !== undefined ? detail.gp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
-        `<strong>GP Travel Time (Car):</strong> ${detail.gp_car_time !== null && detail.gp_car_time !== undefined ? detail.gp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
+        `<strong>DEP004 (Depression Review) (%):</strong> ${detail.dep004_pct !== null && detail.dep004_pct !== undefined ? detail.dep004_pct.toFixed(2) + "%" : "N/A"}` +
+        `</div></details>` +
+        `<details class="map-popup-details"><summary>Hospital, transport, and digital access</summary><div>` +
         `<strong>Hospital Travel Time (PT / Walk):</strong> ${detail.hosp_pt_time !== null && detail.hosp_pt_time !== undefined ? detail.hosp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
         `<strong>Hospital Travel Time (Car):</strong> ${detail.hosp_car_time !== null && detail.hosp_car_time !== undefined ? detail.hosp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
-        `<strong>Rural Access (0-1):</strong> ${detail.rural_access !== null && detail.rural_access !== undefined ? detail.rural_access.toFixed(2) : "N/A"}${detail.ruc21nm ? ` (${detail.ruc21nm})` : ""}<br>` +
         `<strong>Car / Van Availability (0-1):</strong> ${detail.car_access !== null && detail.car_access !== undefined ? detail.car_access.toFixed(2) : "N/A"}<br>` +
         `<strong>Digital Accessibility (DERI) (0-1):</strong> ${detail.digital_access !== null && detail.digital_access !== undefined ? detail.digital_access.toFixed(2) : "N/A"}`;
+      popupHtml += `</div></details>`;
 
       if (detail.ons_pop_total !== null && detail.ons_pop_total !== undefined) {
         popupHtml +=
-          `<hr style="margin:6px 0;">` +
+          `<details class="map-popup-details"><summary>Population and GP registration</summary><div>` +
           `<strong>Resident Population Estimate (ONS Mid-2024):</strong> ${Math.round(detail.ons_pop_total).toLocaleString()}<br>` +
           `<strong>Adults 18+ (Estimate):</strong> ${detail.ons_pop_18plus !== null && detail.ons_pop_18plus !== undefined ? Math.round(detail.ons_pop_18plus).toLocaleString() : "N/A"}${detail.pct_18plus !== null && detail.pct_18plus !== undefined ? ` (${detail.pct_18plus.toFixed(1)}%)` : ""}<br>` +
           `<strong>Older Adults 65+ (Estimate):</strong> ${detail.ons_pop_65plus !== null && detail.ons_pop_65plus !== undefined ? Math.round(detail.ons_pop_65plus).toLocaleString() : "N/A"}${detail.pct_65plus !== null && detail.pct_65plus !== undefined ? ` (${detail.pct_65plus.toFixed(1)}%)` : ""}<br>` +
@@ -412,6 +420,7 @@
         } else if (detail.registration_gap_est && detail.registration_gap_est > 0) {
           popupHtml += `<br><strong>Unregistered / Cross-Border Difference:</strong> -${Math.round(detail.registration_gap_est).toLocaleString()}`;
         }
+        popupHtml += `</div></details>`;
       }
 
       layer.bindPopup(popupHtml, { maxWidth: 360 });
@@ -491,6 +500,7 @@
     const minEl = document.getElementById("map_colorbar_min");
     const maxEl = document.getElementById("map_colorbar_max");
     const titleEl = document.getElementById("map_colorbar_title");
+    const noteEl = document.getElementById("map_colorbar_note");
 
     if (!bar || !minEl || !maxEl || !titleEl) {
       return;
@@ -502,6 +512,13 @@
     titleEl.textContent = layerLabels[currentLayerKey] || "Map Layer";
     minEl.textContent = formatLegendNumber(minScore);
     maxEl.textContent = formatLegendNumber(maxScore);
+    if (noteEl) {
+      const note = currentLayerKey === "Access_Index"
+        ? "0 = lowest relative access\n1 = highest relative access"
+        : "";
+      noteEl.textContent = note;
+      noteEl.hidden = !note;
+    }
   }
 
   function addMapLegendControl() {
@@ -510,7 +527,7 @@
       const container = L.DomUtil.create("div", "leaflet-bar legend-control");
       container.style.background = "#ffffff";
       container.style.padding = "10px";
-      container.style.minWidth = "260px";
+      container.style.minWidth = "220px";
       container.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
       container.style.borderRadius = "6px";
       container.style.border = "1px solid #d7e2e8";
@@ -538,6 +555,8 @@
             <span id="map_colorbar_min">0.0000</span>
             <span id="map_colorbar_max">1.0000</span>
           </div>
+          <div id="map_colorbar_note" style="font-size:11px; line-height:1.35; color:#4f5f69; margin-top:5px; white-space:pre-line; max-width:220px;">0 = lowest relative access
+1 = highest relative access.</div>
         </div>
         <div style="border-top:1px solid #e4ecef; padding-top:8px; margin-top:6px;">
           <label style="display:block;"><input id="map_show_gp_locations" type="checkbox" checked> GP Locations</label>

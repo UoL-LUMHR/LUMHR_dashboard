@@ -33,13 +33,14 @@
     <details class="control">
       <summary><strong>Method Summary</strong></summary>
       <p class="muted" style="margin-top:0.6rem;">
-        The <strong>Rural Risk Index</strong> combines eleven indicators covering rural isolation, healthcare accessibility, transport vulnerability, deprivation, geodemographic composition, household vulnerability, energy vulnerability, housing tenure vulnerability, and overcrowding into a single composite score (0 to 1, where higher = higher cumulative risk).
+        The <strong>Rural Risk Index</strong> combines indicators covering rural isolation, healthcare accessibility, transport vulnerability, deprivation, geodemographic composition, household vulnerability, energy vulnerability, housing tenure vulnerability, and overcrowding into a single composite score. Its scale is 0 (lowest relative risk) to 1 (highest relative risk); the map legend shows the observed range for the selected area.
       </p>
 
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Index vs Single Indicator:</strong></p>
       <ul class="muted" style="margin-top:0; padding-left:1.1rem;">
         <li><strong>Rural Isolation Score (Single Indicator):</strong> Measures purely physical settlement remoteness and distance from major urban centres based on DEFRA's 2021 Rural/Urban Classification (0 = Urban to 1 = Smaller remote rural). It does not factor in vehicle access, journey times to GP surgeries, or socio-economic deprivation.</li>
         <li><strong>Rural Risk Index (Overall Composite):</strong> The overall weighted combination of 13 indicators, including separate public DLA and PIP claimant-rate signals, capturing cumulative vulnerability, practical service barriers, and energy vulnerability for an area.</li>
+        <li>Min-max scaling for several indicators is recalculated for the selected geographic area, so the same LSOA can have a different Rural Risk Index when you change the area.</li>
       </ul>
 
       <p class="muted" style="margin-top:0.45rem; margin-bottom:0.25rem;"><strong>Indicators:</strong></p>
@@ -484,6 +485,7 @@
     const minEl = document.getElementById("map_colorbar_min");
     const maxEl = document.getElementById("map_colorbar_max");
     const titleEl = document.getElementById("map_colorbar_title");
+    const noteEl = document.getElementById("map_colorbar_note");
 
     if (!bar || !minEl || !maxEl || !titleEl) return;
 
@@ -521,6 +523,13 @@
     titleEl.textContent = layerLabels[currentLayerKey] || "Map Layer";
     minEl.textContent = formatLegendNumber(minScore);
     maxEl.textContent = formatLegendNumber(maxScore);
+    if (noteEl) {
+      const note = currentLayerKey === "Rural_Risk_Index"
+        ? "0 = lowest relative risk\n1 = highest relative risk"
+        : "";
+      noteEl.textContent = note;
+      noteEl.hidden = !note;
+    }
   }
 
   function applyActiveLayerStyle() {
@@ -549,7 +558,8 @@
         `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : (detail.dwp_pip_source_status || "N/A")}<br>` +
         `<strong>GP Travel Time (PT / Walk):</strong> ${detail.gp_pt_time !== null && detail.gp_pt_time !== undefined ? detail.gp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
         `<strong>GP Travel Time (Car):</strong> ${detail.gp_car_time !== null && detail.gp_car_time !== undefined ? detail.gp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
-        `<strong>Households with No Car/Van:</strong> ${detail.no_cars_pct !== null && detail.no_cars_pct !== undefined ? detail.no_cars_pct.toFixed(1) + "%" : "N/A"}<br>` +
+        `<strong>Households with No Car/Van:</strong> ${detail.no_cars_pct !== null && detail.no_cars_pct !== undefined ? detail.no_cars_pct.toFixed(1) + "%" : "N/A"}` +
+        `<details class="map-popup-details"><summary>Housing, energy, and deprivation</summary><div>` +
         `<strong>Households in Fuel Poverty (2024):</strong> ${detail.fuel_poverty_pct !== null && detail.fuel_poverty_pct !== undefined ? detail.fuel_poverty_pct.toFixed(1) + "%" : "N/A"}<br>` +
         `<strong>Properties Not on Gas Grid (2024):</strong> ${detail.properties_not_on_gas_grid_pct !== null && detail.properties_not_on_gas_grid_pct !== undefined ? detail.properties_not_on_gas_grid_pct.toFixed(1) + "%" : (detail.properties_not_on_gas_grid_status || "N/A")}<br>` +
         `<strong>Owner-Occupied Homes (Census 2021):</strong> ${detail.owner_occupied_pct !== null && detail.owner_occupied_pct !== undefined ? detail.owner_occupied_pct.toFixed(1) + "%" : "N/A"}${detail.owner_occupied_hh_count !== null && detail.owner_occupied_hh_count !== undefined ? ` (${Math.round(detail.owner_occupied_hh_count).toLocaleString()})` : ""}<br>` +
@@ -561,28 +571,30 @@
         `<strong>IMD 2025 Decile:</strong> ${detail.imd_2025_decile !== null && detail.imd_2025_decile !== undefined ? detail.imd_2025_decile : "N/A"} (Rank: ${detail.imd_2025_rank ? detail.imd_2025_rank.toLocaleString() : "N/A"})<br>` +
         `<strong>LSOAC Subgroup:</strong> ${detail.subgroup_code ? detail.subgroup_code + ': ' + (detail.subgroup_name || "N/A") : "N/A"}<br>` +
         `<strong>LSOAC Group:</strong> ${detail.group_name || "N/A"}<br>` +
-        `<strong>LSOAC Supergroup:</strong> ${detail.supergroup_name || "N/A"}`;
+        `<strong>LSOAC Supergroup:</strong> ${detail.supergroup_name || "N/A"}` +
+        `</div></details>`;
 
       if (detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined) {
-        popupHtml += `<br><strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : (detail.dwp_dla_source_status || "N/A")}` +
+        popupHtml += `<details class="map-popup-details"><summary>DWP claimant details</summary><div>` +
+          `<strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : (detail.dwp_dla_source_status || "N/A")}` +
           `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : (detail.dwp_pip_source_status || "N/A")}`;
-        if (detail.dwp_source) popupHtml += `<br><strong>DWP source:</strong> ${detail.dwp_source}`;
+        popupHtml += `</div></details>`;
       }
 
       if (detail.total_households_2021 !== null && detail.total_households_2021 !== undefined) {
         popupHtml +=
-          `<hr style="margin:6px 0;">` +
-          `<strong>Household Composition (Census 2021):</strong><br>` +
-          `&bull; <strong>Total Households:</strong> ${Math.round(detail.total_households_2021).toLocaleString()}<br>` +
+          `<details class="map-popup-details"><summary>Household composition (Census 2021)</summary><div>` +
+          `<strong>Total Households:</strong> ${Math.round(detail.total_households_2021).toLocaleString()}<br>` +
           `&bull; <strong>Single Older Adults (66+) Living Alone:</strong> ${detail.single_pensioner_hh_pct !== null ? detail.single_pensioner_hh_pct.toFixed(1) + "%" : "N/A"}${detail.single_pensioner_hh_count !== null ? ` (${Math.round(detail.single_pensioner_hh_count)})` : ""}<br>` +
           `&bull; <strong>All-Pensioner Couples (66+):</strong> ${detail.pensioner_couple_hh_pct !== null ? detail.pensioner_couple_hh_pct.toFixed(1) + "%" : "N/A"}${detail.pensioner_couple_hh_count !== null ? ` (${Math.round(detail.pensioner_couple_hh_count)})` : ""}<br>` +
           `&bull; <strong>Lone Parent Families:</strong> ${detail.lone_parent_dep_hh_pct !== null ? detail.lone_parent_dep_hh_pct.toFixed(1) + "%" : "N/A"}${detail.lone_parent_dep_hh_count !== null ? ` (${Math.round(detail.lone_parent_dep_hh_count)})` : ""}<br>` +
-          `&bull; <strong>Adults Not Living as a Couple:</strong> ${detail.non_couple_hh_pct !== null ? detail.non_couple_hh_pct.toFixed(1) + "%" : "N/A"}`;
+          `&bull; <strong>Adults Not Living as a Couple:</strong> ${detail.non_couple_hh_pct !== null ? detail.non_couple_hh_pct.toFixed(1) + "%" : "N/A"}` +
+          `</div></details>`;
       }
 
       if (detail.ons_pop_total !== null && detail.ons_pop_total !== undefined) {
         popupHtml +=
-          `<hr style="margin:6px 0;">` +
+          `<details class="map-popup-details"><summary>Population and GP registration</summary><div>` +
           `<strong>Resident Population Estimate (ONS Mid-2024):</strong> ${Math.round(detail.ons_pop_total).toLocaleString()}<br>` +
           `<strong>Adults 18+ (Estimate):</strong> ${detail.ons_pop_18plus !== null && detail.ons_pop_18plus !== undefined ? Math.round(detail.ons_pop_18plus).toLocaleString() : "N/A"}${detail.pct_18plus !== null && detail.pct_18plus !== undefined ? ` (${detail.pct_18plus.toFixed(1)}%)` : ""}<br>` +
           `<strong>Older Adults 65+ (Estimate):</strong> ${detail.ons_pop_65plus !== null && detail.ons_pop_65plus !== undefined ? Math.round(detail.ons_pop_65plus).toLocaleString() : "N/A"}${detail.pct_65plus !== null && detail.pct_65plus !== undefined ? ` (${detail.pct_65plus.toFixed(1)}%)` : ""}<br>` +
@@ -594,6 +606,7 @@
         } else if (detail.registration_gap_est && detail.registration_gap_est > 0) {
           popupHtml += `<br><strong>Unregistered / Cross-Border Difference:</strong> -${Math.round(detail.registration_gap_est).toLocaleString()}`;
         }
+        popupHtml += `</div></details>`;
       }
 
       layer.bindPopup(popupHtml, { maxWidth: 360 });
@@ -611,7 +624,7 @@
       const container = L.DomUtil.create("div", "leaflet-bar legend-control");
       container.style.background = "#ffffff";
       container.style.padding = "10px";
-      container.style.minWidth = "260px";
+      container.style.minWidth = "220px";
       container.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
       container.style.borderRadius = "6px";
       container.style.border = "1px solid #d7e2e8";
@@ -648,6 +661,8 @@
             <span id="map_colorbar_min">0.0000</span>
             <span id="map_colorbar_max">1.0000</span>
           </div>
+          <div id="map_colorbar_note" style="font-size:11px; line-height:1.35; color:#4f5f69; margin-top:5px; white-space:pre-line; max-width:220px;">0 = lowest relative risk
+1 = highest relative risk.</div>
         </div>
         <div style="border-top:1px solid #e4ecef; padding-top:8px; margin-top:6px;">
           <label style="display:block;"><input id="map_show_gp_locations" type="checkbox" checked> GP Locations</label>

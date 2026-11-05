@@ -89,7 +89,6 @@ def _dashboard_data_path(directory: Path, filename: str) -> Path:
 # Load once at startup so API requests only do lightweight transforms.
 BUNDLE = get_prepared_bundle_cached(str(BASE_DIR))
 LSOA_METRICS = BUNDLE["lsoa_metrics"].copy()
-GP_MARKER_DF = BUNDLE["gp_marker_df"].copy()
 
 # Public DWP snapshots are read from the copied raw exports in datasets/.  The
 # reconstructed SAMHI panel supplies denominator/vintage metadata; the raw
@@ -574,7 +573,7 @@ def gp_locations_api():
     scope = str(request.args.get("scope", "lincolnshire") or "lincolnshire").strip().lower()
     if scope not in NEED_INDEX_GEOJSON_PATHS:
         scope = "lincolnshire"
-    marker_df = GP_MARKER_DF if scope == "lincolnshire" else _get_current_area_need_base(scope)["markers"]
+    marker_df = _get_current_area_need_base(scope)["markers"]
     cols = [
         "PRACTICE_CODE",
         "Practice_Name",
@@ -662,17 +661,12 @@ def need_scores_api():
         scope = "lincolnshire"
 
     samhi_index_col, _ = get_samhi_columns(samhi_year)
-    if scope == "lincolnshire":
-        if samhi_index_col not in LSOA_METRICS.columns:
-            return jsonify({"error": f"Missing SAMHI column: {samhi_index_col}"}), 400
-        scored = _attach_public_dwp_layer(LSOA_METRICS, dwp_year)
-        out_of_area_lsoa_count = len(BUNDLE["out_of_area_lsoa_codes"])
-        out_of_area_patients = int(round(float(BUNDLE["out_of_area_patients"])))
-    else:
-        scored = _get_current_area_need_metrics(scope, dwp_year)
-        area_data = _get_current_area_need_base(scope)
-        out_of_area_lsoa_count = area_data["out_of_area_lsoa_count"]
-        out_of_area_patients = area_data["out_of_area_patients"]
+    scored = _get_current_area_need_metrics(scope, dwp_year)
+    if samhi_index_col not in scored.columns:
+        return jsonify({"error": f"Missing SAMHI column: {samhi_index_col}"}), 400
+    area_data = _get_current_area_need_base(scope)
+    out_of_area_lsoa_count = area_data["out_of_area_lsoa_count"]
+    out_of_area_patients = area_data["out_of_area_patients"]
 
     out_of_area_note = (
         "GP registration data includes patients registered to practices in this area who live outside its map "
@@ -1037,24 +1031,6 @@ def _extract_area_energy_metrics(lsoa_codes: set[str]) -> list[pd.DataFrame]:
 
 def _get_area_lsoa_metrics(scope: str) -> pd.DataFrame:
     """Return selected-area metrics for access, gap, and rural-risk scoring."""
-    if scope == "lincolnshire":
-        if scope in _AREA_METRICS_CACHE:
-            return _AREA_METRICS_CACHE[scope]
-        metrics = LSOA_METRICS.copy()
-        lsoa_codes = set(metrics["LSOA_CODE"].dropna().astype(str))
-        for component in _extract_area_energy_metrics(lsoa_codes):
-            for column in [name for name in component.columns if name != "LSOA_CODE"]:
-                source_column = f"{column}__complete_source"
-                supplemental = component[["LSOA_CODE", column]].drop_duplicates("LSOA_CODE")
-                supplemental = supplemental.rename(columns={column: source_column})
-                metrics = metrics.merge(supplemental, on="LSOA_CODE", how="left")
-                if column in metrics.columns:
-                    metrics[column] = metrics[column].combine_first(metrics[source_column])
-                else:
-                    metrics[column] = metrics[source_column]
-                metrics = metrics.drop(columns=[source_column])
-        _AREA_METRICS_CACHE[scope] = metrics
-        return metrics
     if scope in _AREA_METRICS_CACHE:
         return _AREA_METRICS_CACHE[scope]
 
@@ -1529,12 +1505,39 @@ def _get_current_area_need_base(scope: str) -> dict[str, pd.DataFrame]:
     allocated, _ = allocate_registers_to_lsoa(allocation_mapping_df, gp_master)
     access_rates = allocate_access_rates_to_lsoa(allocation_mapping_df, gp_master)
     area = _get_samhi_area_metrics(scope).copy()
-    area = area.merge(allocated, on="LSOA_CODE", how="left")
-    area = area.merge(access_rates, on="LSOA_CODE", how="left")
+    if "lsoa11" not in area.columns:
+        lookup_path = (
+            DATASETS_DIR
+            / "lsoa"
+            / "lsoa_2011_to_2021_lookup"
+            / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv"
+        )
+        lookup = pd.read_csv(
+            lookup_path,
+            usecols=["LSOA11CD", "LSOA21CD"],
+            dtype=str,
+        ).rename(columns={"LSOA11CD": "lsoa11", "LSOA21CD": "LSOA_CODE"})
+        lookup["lsoa11"] = lookup["lsoa11"].astype(str).str.strip()
+        lookup["LSOA_CODE"] = lookup["LSOA_CODE"].astype(str).str.strip()
+        area = area.merge(lookup.drop_duplicates("LSOA_CODE"), on="LSOA_CODE", how="left")
+    # The legacy Lincolnshire bundle already contains practice allocations
+    # calculated from a smaller sex-split mapping. Replace any overlapping
+    # values with the county-prepared crosswalk results so each scope starts
+    # from the same GP inputs for the same LSOA.
+    for component in (allocated, access_rates):
+        replaced_columns = [
+            column for column in component.columns
+            if column != "LSOA_CODE" and column in area.columns
+        ]
+        if replaced_columns:
+            area = area.drop(columns=replaced_columns)
+        area = area.merge(component, on="LSOA_CODE", how="left")
     area = area.merge(parkfields_by_lsoa, on="LSOA_CODE", how="left")
     pop_path = DATASETS_DIR / "population_estimates" / f"{scope}_lsoa_population_estimates_2024.csv"
     population = pd.read_csv(pop_path, low_memory=False)
-    area = area.merge(population, on="LSOA_CODE", how="left", suffixes=("", "_population"))
+    population_columns = [column for column in population.columns if column != "LSOA_CODE"]
+    area = area.drop(columns=[column for column in population_columns if column in area.columns])
+    area = area.merge(population, on="LSOA_CODE", how="left")
 
     locations = BUNDLE["gp_loc_df"]
     geojson_path = DATASETS_DIR / NEED_INDEX_GEOJSON_PATHS[scope]
