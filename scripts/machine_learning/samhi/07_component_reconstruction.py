@@ -141,34 +141,6 @@ def _read_qof_depression_practice(path: Path, year: int) -> pd.DataFrame:
     return pd.DataFrame(records, columns=columns).drop_duplicates("practice_code", keep="last")
 
 
-def _read_qof_depression_prevalence_csv(path: Path, year: int) -> pd.DataFrame:
-    """Read the 2023--24 QOF prevalence extract with register counts.
-
-    The accompanying workbook omits the depression register because the
-    indicator was temporarily changed to incidence.  The supplementary CSV
-    contains the register count and adult practice-list denominator needed to
-    reconstruct the prevalence percentage.
-    """
-    columns = ["practice_code", "qof_dep_practice_pct", "qof_year"]
-    if not path.exists():
-        return pd.DataFrame(columns=columns)
-    raw = pd.read_csv(path, low_memory=False)
-    required = {"PRACTICE_CODE", "GROUP_CODE", "REGISTER", "PATIENT_LIST_TYPE", "PRACTICE_LIST_SIZE"}
-    if not required.issubset(raw.columns):
-        return pd.DataFrame(columns=columns)
-    out = raw[
-        raw["GROUP_CODE"].astype(str).str.upper().eq("DEP")
-        & raw["PATIENT_LIST_TYPE"].astype(str).str.upper().eq("18OV")
-    ].copy()
-    out["practice_code"] = out["PRACTICE_CODE"].map(normalise_code)
-    out["register"] = pd.to_numeric(out["REGISTER"], errors="coerce")
-    out["list_size"] = pd.to_numeric(out["PRACTICE_LIST_SIZE"], errors="coerce")
-    out = out[out["practice_code"].notna() & out["list_size"].gt(0) & out["register"].ge(0)]
-    out["qof_dep_practice_pct"] = out["register"] / out["list_size"] * 100.0
-    out["qof_year"] = year
-    return out[["practice_code", "qof_dep_practice_pct", "qof_year"]].drop_duplicates("practice_code", keep="last")
-
-
 def load_qof_practice_lsoa(root: Path) -> pd.DataFrame:
     """Allocate public practice QOF depression prevalence to LSOA11.
 
@@ -183,21 +155,12 @@ def load_qof_practice_lsoa(root: Path) -> pd.DataFrame:
     workbook_paths = {
         2021: qof_base / "2021-22" / "mental_health_neurology_group" / "qof-2122-prev-ach-pca-neu-prac.xlsx",
         2022: qof_base / "2022-23" / "mental_health_neurology_group" / "qof-2223-prev-ach-pca-neu-prac.xlsx",
-        2023: qof_base / "2023-24" / "mental_health_neurology_group" / "qof-2324-prev-ach-pca-neu-prac.xlsx",
         2024: qof_base / "2024-25" / "mental_health_neurology_group" / "qof-2425-prev-ach-pca-neu-prac.xlsx",
-    }
-    prevalence_csv_paths = {
-        2023: qof_base / "2023-24" / "QOF2324" / "PREVALENCE_2324.csv",
     }
     output = []
     for year, workbook in workbook_paths.items():
-        prevalence_csv = prevalence_csv_paths.get(year)
-        if prevalence_csv is not None and prevalence_csv.exists():
-            practice = _read_qof_depression_prevalence_csv(prevalence_csv, year)
-            source_name = prevalence_csv.name
-        else:
-            practice = _read_qof_depression_practice(workbook, year)
-            source_name = workbook.name
+        practice = _read_qof_depression_practice(workbook, year)
+        source_name = workbook.name
         if practice.empty:
             LOGGER.warning("No public QOF depression prevalence found for %s (%s)", year, source_name)
             continue
@@ -242,11 +205,24 @@ def load_qof_practice_lsoa(root: Path) -> pd.DataFrame:
         # the workbook's start-year vintage.
         lsoa["year"] = year + 1
         lsoa["qof_public_source_year"] = year
-        output.append(lsoa[["lsoa11", "year", "qof_public_source_year", "qof_public_pct", "qof_patient_weight", "qof_practice_count"]])
+        lsoa["qof_public_source"] = "QOF_practice_LSOA"
+        output.append(lsoa[["lsoa11", "year", "qof_public_source_year", "qof_public_source", "qof_public_pct", "qof_patient_weight", "qof_practice_count"]])
         LOGGER.info("Reconstructed public QOF %s: %s LSOAs from %s practices", year, len(lsoa), len(practice))
     if not output:
-        return pd.DataFrame(columns=["lsoa11", "year", "qof_public_source_year", "qof_public_pct", "qof_patient_weight", "qof_practice_count"])
-    return pd.concat(output, ignore_index=True)
+        return pd.DataFrame(columns=["lsoa11", "year", "qof_public_source_year", "qof_public_source", "qof_public_pct", "qof_patient_weight", "qof_practice_count"])
+
+    qof = pd.concat(output, ignore_index=True)
+    # NHS England changed the 2023-24 depression register to newly diagnosed
+    # cases only (incidence), so it is not comparable with the prevalence
+    # series used in other years. Carry the last comparable year (2022-23)
+    # forward into panel year 2024 and retain its source vintage explicitly.
+    carry = qof[qof["year"].eq(2023)].copy()
+    carry["year"] = 2024
+    carry["qof_public_source"] = "QOF_practice_LSOA_carry_forward"
+    if not carry.empty:
+        LOGGER.info("Carried 2022-23 QOF prevalence into 2023-24 for %s LSOAs", len(carry))
+        qof = pd.concat([qof, carry], ignore_index=True)
+    return qof
 
 
 def load_welfare_pldr(source_root: Path) -> pd.DataFrame:
@@ -427,7 +403,11 @@ def build_panel(root: Path) -> pd.DataFrame:
     panel["dla_pip"] = panel["dla_pip"].fillna(panel["dwp_dla_pip_count"])
     qof_public = load_qof_practice_lsoa(root)
     panel = panel.merge(qof_public, on=["lsoa11", "year"], how="outer")
-    panel["qof_dep_source"] = np.where(panel["qof_dep_pct"].notna(), "PLDR", np.where(panel["qof_public_pct"].notna(), "QOF_practice_LSOA", pd.NA))
+    panel["qof_dep_source"] = np.where(
+        panel["qof_dep_pct"].notna(),
+        "PLDR",
+        panel["qof_public_source"].where(panel["qof_public_pct"].notna(), pd.NA),
+    )
     panel["qof_dep_pct"] = panel["qof_dep_pct"].fillna(panel["qof_public_pct"])
     # The hospital component is intentionally absent; do not fill it with EMAS.
     panel["hospital_component"] = np.nan
@@ -465,6 +445,10 @@ def main() -> None:
     if panel.empty:
         raise SystemExit("No component rows were created")
     write_outputs(panel, project_root() / args.output_dir)
+    dashboard_panel = project_root() / "datasets" / "samhi_forecast" / "three_component_panel.csv.gz"
+    dashboard_panel.parent.mkdir(parents=True, exist_ok=True)
+    panel.to_csv(dashboard_panel, index=False, compression="gzip")
+    LOGGER.info("Wrote forecast input panel to %s", dashboard_panel)
 
 
 if __name__ == "__main__":

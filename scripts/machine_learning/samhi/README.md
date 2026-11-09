@@ -255,13 +255,17 @@ working-age population counts.
 | QOF depression | `scripts/utils/source_data/pldr_qof_indicators_depression_prevalence_QOF_4_12/QOF_4_12_Depression_LSOA_2011_2022.csv` | LSOA estimates 2011--2022; 2018 and 2019 have small gaps retained as missing |
 | DLA/PIP | `scripts/utils/source_data/pldr_welfare_indicators_claimants_DLA_PIP_for_mental_health_learning_difficulties_W_5_05/W_5_05_MH_DLA_PIP_LSOA11.csv` | Annual August snapshots 2010--2022; disclosure-adjusted PLDR values |
 | Raw DWP supplements | `scripts/utils/source_data/DWP_DLA_PIP_data/` | DLA monthly/quarterly extracts cover April 2013--March 2026 (earlier `to_may_2018` plus later `from_may_2018`); the historical PIP extract covers April 2013--December 2018 and the current PIP series starts January 2019 and continues to July 2026. The loader ignores the historical PIP file only if it is byte-identical to the DLA export; the corrected repository files are distinct and both series are included. Upstream: [DWP Stat-Xplore](https://stat-xplore.dwp.gov.uk/) |
-| Raw QOF supplements | `scripts/utils/source_data/quality_outcomes_framework/` | Public practice workbooks and the supplementary `2023-24/QOF2324/PREVALENCE_2324.csv` register extract through 2024--25; the current parser reconstructs 2021--22, 2022--23, 2023--24 and 2024--25 |
+| Raw QOF supplements | `scripts/utils/source_data/quality_outcomes_framework/` | Public practice workbooks through 2024--25; comparable depression prevalence is reconstructed for 2021--22, 2022--23 and 2024--25 |
 
-The supplied 2023--24 workbook is kept unchanged as the official source file:
-its `DEP` sheet contains incidence rather than a depression register. The
-companion `PREVALENCE_2324.csv` is therefore joined by practice code and used
-as the register/prevalence supplement when the tests run, rather than silently
-overwriting the upstream workbook.
+The supplied 2023--24 workbook and `PREVALENCE_2324.csv` are kept unchanged as
+official source files. NHS England states that the 2023--24 depression register
+captures newly diagnosed patients only, so it represents incidence and is not
+comparable with the all-diagnosis prevalence series in other years. The panel
+does not use that register as prevalence. Instead, it carries the 2022--23
+practice prevalence forward one year into panel year 2024. The panel records
+`qof_public_source=QOF_practice_LSOA_carry_forward` and retains the original
+2022 source vintage in `qof_public_source_year`. This is an explicit
+last-observation assumption, not an observed 2023--24 value.
 
 Run the component audit with:
 
@@ -271,7 +275,10 @@ scripts/.venv/bin/python scripts/machine_learning/samhi/07_component_reconstruct
 
 Outputs are written to `results/component_reconstruction/`:
 
-* `three_component_panel.csv` — LSOA-year antidepressant, QOF and DLA/PIP values, with the hospital column explicitly missing.  `dla_pip` is the raw claimant-count component used by PLDR (not a percentage): PLDR values are retained for 2010--2022; where they are unavailable, the panel fills the count from DWP August DLA+PIP and records `dla_pip_source=DWP_August`.  The optional denominator-normalised DWP rate is `dwp_dla_pip_rate_pct`, with its `dwp_population_source_year` retained.  `qof_dep_source` distinguishes PLDR from patient-weighted public QOF practice allocation; the supplementary 2023--24 register extract now supplies 2024 QOF prevalence;
+The script also refreshes `datasets/samhi_forecast/three_component_panel.csv.gz`,
+the source panel consumed by the forecasting scripts.
+
+* `three_component_panel.csv` — LSOA-year antidepressant, QOF and DLA/PIP values, with the hospital column explicitly missing.  `dla_pip` is the raw claimant-count component used by PLDR (not a percentage): PLDR values are retained for 2010--2022; where they are unavailable, the panel fills the count from DWP August DLA+PIP and records `dla_pip_source=DWP_August`.  The optional denominator-normalised DWP rate is `dwp_dla_pip_rate_pct`, with its `dwp_population_source_year` retained.  `qof_dep_source` distinguishes PLDR, direct patient-weighted public QOF and the one-year carry-forward;
 * `component_coverage.csv` — row-level coverage by year and component; and
 * `component_vs_published_samhi_correlations.csv` — cross-sectional diagnostics against the published SAMHI index.
 
@@ -287,12 +294,11 @@ contribution cannot be recovered from public files.
 The corrected panel has complete antidepressant and PLDR QOF coverage for most
 2011--2022 LSOA-years, with small QOF gaps in 2018--2019. DWP combined
 DLA/PIP coverage is 32,392 LSOAs (98.62%) in 2023, 32,520 (99.01%) in 2024,
-and 32,555 (99.12%) in 2025. The 2023--24 workbook itself publishes incidence,
-but the supplementary register CSV supplies practice prevalence for 2024;
-its values are patient-weighted to LSOA and mapped from 2021 children to 2011
-SAMHI parents before joining the panel. The reconstructed QOF prevalence is
-present for 32,844/32,844 LSOAs in 2023, 32,745/32,845 (99.70%) in 2024, and
-32,845/32,845 in 2025; the 100 unmatched 2024 LSOAs remain explicitly missing.
+and 32,555 (99.12%) in 2025. The 2023--24 depression register is incidence and
+is excluded from the prevalence series. The panel carries 2022--23
+patient-weighted prevalence into 2024 for 32,844 LSOAs; direct QOF prevalence
+is used for panel years 2023 and 2025. Recent practice values are mapped from
+2021 children to 2011 SAMHI parents before aggregation.
 
 The corrected DLA file is now used in the extension. The refreshed DWP-to-PLDR
 calibration has usable overlap from 2014--2022, with year-specific Pearson
@@ -355,14 +361,12 @@ forecasts.
 ### 11. Sensitivity and spatial pilot
 
 [`10_public_data_sensitivity.py`](10_public_data_sensitivity.py) tests DWP
-calibration, the 2024 QOF carry-forward option and removal of historical SAMHI
-lags.  The calibrated and raw-DWP scenarios gave identical historical scores,
-because DWP is only used after 2022; their refreshed 2025 Bayesian forecast
-means were 1.011 and 1.240 respectively. Carrying 2023 QOF forward into 2024
-produced a virtually identical 2025 calibrated mean (1.011), while removing
-SAMHI history substantially worsened ElasticNet RMSE to 0.513. This supports retaining
-the calibrated public model as the primary specification and treating QOF
-imputation as a sensitivity rather than a preferred value.
+calibration, withholding the carried-forward 2024 QOF value, and removal of
+historical SAMHI lags. The calibrated and raw-DWP scenarios gave identical
+historical scores, because DWP is only used after 2022; their refreshed 2025
+Bayesian forecast means were 1.011 and 1.240 respectively. The carried-forward
+QOF value is now the primary input for 2024, with its source year and status
+retained for inspection.
 
 [`11_public_spatial_bayesian.py`](11_public_spatial_bayesian.py) is the
 Lincolnshire spatial pilot.  On the same LSOAs and rolling years, the spatial

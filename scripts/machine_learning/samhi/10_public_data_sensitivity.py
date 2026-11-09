@@ -38,11 +38,8 @@ def scenario_panel(panel: pd.DataFrame, name: str) -> pd.DataFrame:
     out = panel.copy()
     if name == "raw_dwp":
         out["dla_pip_calibrated"] = out["dla_pip"]
-    elif name == "qof_carry_forward":
-        source = out[out["year"].eq(2023)][["lsoa11", "qof_dep_pct"]].rename(columns={"qof_dep_pct": "qof_2023"})
-        out = out.merge(source, on="lsoa11", how="left")
-        out.loc[out["year"].eq(2024) & out["qof_dep_pct"].isna(), "qof_dep_pct"] = out.loc[out["year"].eq(2024) & out["qof_dep_pct"].isna(), "qof_2023"]
-        out = out.drop(columns=["qof_2023"])
+    elif name == "qof_missing_2024":
+        out.loc[out["year"].eq(2024), "qof_dep_pct"] = np.nan
     out["dla_pip_calibrated_lag1"] = out.groupby("lsoa11")["dla_pip_calibrated"].shift(1)
     out["qof_dep_pct_lag1"] = out.groupby("lsoa11")["qof_dep_pct"].shift(1)
     return out
@@ -61,7 +58,7 @@ def main() -> None:
     args = parser.parse_args()
     root = root_path()
     panel, _ = prepare(root)
-    scenarios = ["base_calibrated", "raw_dwp", "qof_carry_forward", "no_samhi_history"]
+    scenarios = ["base_calibrated", "raw_dwp", "qof_missing_2024", "no_samhi_history"]
     models = ["BayesianRidge", "ElasticNet"]
     metrics, future = [], []
     for scenario in scenarios:
