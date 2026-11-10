@@ -1281,6 +1281,22 @@ def access_gap_scores_api():
         access_scored[["LSOA_CODE", "Access_Index"]], on="LSOA_CODE", how="outer"
     )
     combined["Access_Gap_Index"] = combined["Need_Index"] - combined["Access_Index"]
+    need_detail_cols = [
+        "Depression_Prevalence",
+        "Depression_Coverage_Pct",
+        "SMI_Prevalence",
+        "SMI_Coverage_Pct",
+        "Antidepressant_Items_Per_Patient",
+        "Antidepressant_Coverage_Pct",
+        "SAMHI_Selected",
+    ]
+    need_detail_cols = [column for column in need_detail_cols if column in need_scored.columns]
+    combined = combined.merge(
+        need_scored[["LSOA_CODE", *need_detail_cols]], on="LSOA_CODE", how="left"
+    )
+    combined = combined.merge(
+        access_scored[["LSOA_CODE", *access_required_cols]], on="LSOA_CODE", how="left"
+    )
     dwp_cols = [
         "dwp_dla_count",
         "dwp_pip_count",
@@ -1297,6 +1313,7 @@ def access_gap_scores_api():
 
     pop_cols = [
         "RUC21NM",
+        "ONS_Pop_Total_2024",
         "ONS_Pop_18plus",
         "ONS_Pop_65plus",
         "ONS_Pop_0to17",
@@ -1338,6 +1355,25 @@ def access_gap_scores_api():
             "access_gap_index": _num_or_none(row.get("Access_Gap_Index")),
             "need_index": _num_or_none(row.get("Need_Index")),
             "access_index": _num_or_none(row.get("Access_Index")),
+            "depression_prevalence": _num_or_none(row.get("Depression_Prevalence")),
+            "depression_coverage_pct": _num_or_none(row.get("Depression_Coverage_Pct")),
+            "smi_prevalence": _num_or_none(row.get("SMI_Prevalence")),
+            "smi_coverage_pct": _num_or_none(row.get("SMI_Coverage_Pct")),
+            "antidepressant_items_per_patient": _num_or_none(row.get("Antidepressant_Items_Per_Patient")),
+            "antidepressant_coverage_pct": _num_or_none(row.get("Antidepressant_Coverage_Pct")),
+            "samhi_selected": _num_or_none(row.get("SAMHI_Selected")),
+            "mh002_pct": _num_or_none(row.get("MH002_Access_Pct")),
+            "mh021_pct": _num_or_none(row.get("MH021_Access_Pct")),
+            "mh_pca_pct": _num_or_none(row.get("MH_PCA_Access_Pct")),
+            "dep_pca_pct": _num_or_none(row.get("Dep_PCA_Access_Pct")),
+            "dep004_pct": _num_or_none(row.get("DEP004_Access_Pct")),
+            "gp_pt_time": _num_or_none(row.get("GP_PT_Time")),
+            "gp_car_time": _num_or_none(row.get("GP_Car_Time")),
+            "hosp_pt_time": _num_or_none(row.get("Hosp_PT_Time")),
+            "hosp_car_time": _num_or_none(row.get("Hosp_Car_Time")),
+            "rural_access": _num_or_none(row.get("Rural_Access")),
+            "car_access": _num_or_none(row.get("Car_Access")),
+            "digital_access": _num_or_none(row.get("Digital_Access")),
             "dwp_dla_count": _num_or_none(row.get("dwp_dla_count")),
             "dwp_pip_count": _num_or_none(row.get("dwp_pip_count")),
             "dwp_dla_rate_pct": _num_or_none(row.get("dwp_dla_rate_pct")),
@@ -1882,6 +1918,8 @@ def rural_risk_scores_api():
             "lsoa_name": str(row.get(lsoa_name_col, "") or "") if lsoa_name_col else "",
             "rural_risk_index": _num_or_none(row.get("Rural_Risk_Index")),
             "rural_isolation_score": _num_or_none(row.get("Rural_Isolation_Normalized")),
+            "lsoac_risk_score": _num_or_none(row.get("LSOAC_Risk_Normalized")),
+            "imd_deprivation_score": _num_or_none(row.get("IMD_Deprivation_Normalized")),
             "ruc21nm": ruc_text,
             "urban_rural_flag": flag_text,
             "is_rural": "rural" in ruc_text.lower(),

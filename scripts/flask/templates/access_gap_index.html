@@ -433,7 +433,33 @@
         `<strong>Access Gap Index:</strong> ${detail.access_gap_index !== null && detail.access_gap_index !== undefined ? detail.access_gap_index.toFixed(4) : "N/A"}<br>` +
         `<strong>Need Index:</strong> ${detail.need_index !== null && detail.need_index !== undefined ? detail.need_index.toFixed(4) : "N/A"}<br>` +
         `<strong>Access Index:</strong> ${detail.access_index !== null && detail.access_index !== undefined ? detail.access_index.toFixed(4) : "N/A"}<br>` +
-        `<details class="map-popup-details"><summary>Need data (DWP)</summary><div>` +
+        `<details class="map-popup-details"><summary>Need inputs</summary><div>` +
+        `` +
+        `<strong>Depression Prevalence:</strong> ${detail.depression_prevalence !== null && detail.depression_prevalence !== undefined ? (detail.depression_prevalence * 100).toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>Depression practice coverage:</strong> ${detail.depression_coverage_pct !== null && detail.depression_coverage_pct !== undefined ? detail.depression_coverage_pct.toFixed(1) + "%" : "N/A"}<br>` +
+        `<strong>SMI Prevalence:</strong> ${detail.smi_prevalence !== null && detail.smi_prevalence !== undefined ? (detail.smi_prevalence * 100).toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>SMI practice coverage:</strong> ${detail.smi_coverage_pct !== null && detail.smi_coverage_pct !== undefined ? detail.smi_coverage_pct.toFixed(1) + "%" : "N/A"}<br>` +
+        `<strong>Antidepressant Items / Patient:</strong> ${detail.antidepressant_items_per_patient !== null && detail.antidepressant_items_per_patient !== undefined ? detail.antidepressant_items_per_patient.toFixed(4) : "N/A"}<br>` +
+        `<strong>Antidepressant practice coverage:</strong> ${detail.antidepressant_coverage_pct !== null && detail.antidepressant_coverage_pct !== undefined ? detail.antidepressant_coverage_pct.toFixed(1) + "%" : "N/A"}<br>` +
+        `<strong>SAMHI Index (${document.getElementById("samhi_year")?.value || ""}):</strong> ${detail.samhi_selected !== null && detail.samhi_selected !== undefined ? detail.samhi_selected.toFixed(4) : "N/A"}<br>` +
+        `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : (detail.dwp_dla_source_status || "N/A")}<br>` +
+        `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : (detail.dwp_pip_source_status || "N/A")}` +
+        `</div></details>` +
+        `<details class="map-popup-details"><summary>Access inputs</summary><div>` +
+        `<strong>MH002 (SMI Care Plan):</strong> ${detail.mh002_pct !== null && detail.mh002_pct !== undefined ? detail.mh002_pct.toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>MH021 (SMI Health Check):</strong> ${detail.mh021_pct !== null && detail.mh021_pct !== undefined ? detail.mh021_pct.toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>Mental Health PCA exceptions:</strong> ${detail.mh_pca_pct !== null && detail.mh_pca_pct !== undefined ? detail.mh_pca_pct.toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>Depression PCA exceptions:</strong> ${detail.dep_pca_pct !== null && detail.dep_pca_pct !== undefined ? detail.dep_pca_pct.toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>DEP004 Depression Review:</strong> ${detail.dep004_pct !== null && detail.dep004_pct !== undefined ? detail.dep004_pct.toFixed(2) + "%" : "N/A"}<br>` +
+        `<strong>GP Travel Time (PT / Walk):</strong> ${detail.gp_pt_time !== null && detail.gp_pt_time !== undefined ? detail.gp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
+        `<strong>GP Travel Time (Car):</strong> ${detail.gp_car_time !== null && detail.gp_car_time !== undefined ? detail.gp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
+        `<strong>Hospital Travel Time (PT / Walk):</strong> ${detail.hosp_pt_time !== null && detail.hosp_pt_time !== undefined ? detail.hosp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
+        `<strong>Hospital Travel Time (Car):</strong> ${detail.hosp_car_time !== null && detail.hosp_car_time !== undefined ? detail.hosp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
+        `<strong>Rural Access:</strong> ${detail.rural_access !== null && detail.rural_access !== undefined ? detail.rural_access.toFixed(2) : "N/A"}<br>` +
+        `<strong>Car / Van Availability:</strong> ${detail.car_access !== null && detail.car_access !== undefined ? detail.car_access.toFixed(2) : "N/A"}<br>` +
+        `<strong>Digital Accessibility (DERI):</strong> ${detail.digital_access !== null && detail.digital_access !== undefined ? detail.digital_access.toFixed(2) : "N/A"}` +
+        `</div></details>` +
+        `<details class="map-popup-details"><summary>DWP Data</summary><div>` +
         `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : (detail.dwp_dla_source_status || "N/A")}<br>` +
         `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : (detail.dwp_pip_source_status || "N/A")}`;
 

@@ -388,10 +388,7 @@
       let popupHtml =
         `<strong>LSOA:</strong> ${code}<br>` +
         `<strong>LSOA Name:</strong> ${detail.lsoa_name || name || "N/A"}<br>` +
-        `<strong>Access Index:</strong> ${detail.access_index !== null && detail.access_index !== undefined ? detail.access_index.toFixed(4) : "N/A"}<br>` +
-        `<strong>GP Travel Time (PT / Walk):</strong> ${detail.gp_pt_time !== null && detail.gp_pt_time !== undefined ? detail.gp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
-        `<strong>GP Travel Time (Car):</strong> ${detail.gp_car_time !== null && detail.gp_car_time !== undefined ? detail.gp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
-        `<strong>Rural Access (0-1):</strong> ${detail.rural_access !== null && detail.rural_access !== undefined ? detail.rural_access.toFixed(2) : "N/A"}${detail.ruc21nm ? ` (${detail.ruc21nm})` : ""}` +
+        `<strong>Access Index:</strong> ${detail.access_index !== null && detail.access_index !== undefined ? detail.access_index.toFixed(4) : "N/A"}` +
         `<details class="map-popup-details"><summary>Practice care measures</summary><div>` +
         `<strong>MH002 (SMI Care Plan) (%):</strong> ${detail.mh002_pct !== null && detail.mh002_pct !== undefined ? detail.mh002_pct.toFixed(2) + "%" : "N/A"}<br>` +
         `<strong>MH021 (SMI Health Check) (%):</strong> ${detail.mh021_pct !== null && detail.mh021_pct !== undefined ? detail.mh021_pct.toFixed(2) + "%" : "N/A"}<br>` +
@@ -399,11 +396,18 @@
         `<strong>Depression PCA (Exceptions) (%):</strong> ${detail.dep_pca_pct !== null && detail.dep_pca_pct !== undefined ? detail.dep_pca_pct.toFixed(2) + "%" : "N/A"}<br>` +
         `<strong>DEP004 (Depression Review) (%):</strong> ${detail.dep004_pct !== null && detail.dep004_pct !== undefined ? detail.dep004_pct.toFixed(2) + "%" : "N/A"}` +
         `</div></details>` +
-        `<details class="map-popup-details"><summary>Hospital, transport, and digital access</summary><div>` +
+        `<details class="map-popup-details"><summary>Travel, transport, and digital access</summary><div>` +
+        `<strong>GP Travel Time (PT / Walk):</strong> ${detail.gp_pt_time !== null && detail.gp_pt_time !== undefined ? detail.gp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
+        `<strong>GP Travel Time (Car):</strong> ${detail.gp_car_time !== null && detail.gp_car_time !== undefined ? detail.gp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
         `<strong>Hospital Travel Time (PT / Walk):</strong> ${detail.hosp_pt_time !== null && detail.hosp_pt_time !== undefined ? detail.hosp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
         `<strong>Hospital Travel Time (Car):</strong> ${detail.hosp_car_time !== null && detail.hosp_car_time !== undefined ? detail.hosp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
+        `<strong>Rural Access (0-1):</strong> ${detail.rural_access !== null && detail.rural_access !== undefined ? detail.rural_access.toFixed(2) : "N/A"}${detail.ruc21nm ? ` (${detail.ruc21nm})` : ""}<br>` +
         `<strong>Car / Van Availability (0-1):</strong> ${detail.car_access !== null && detail.car_access !== undefined ? detail.car_access.toFixed(2) : "N/A"}<br>` +
-        `<strong>Digital Accessibility (DERI) (0-1):</strong> ${detail.digital_access !== null && detail.digital_access !== undefined ? detail.digital_access.toFixed(2) : "N/A"}`;
+        `<strong>Households with No Car/Van:</strong> ${detail.no_cars_pct !== null && detail.no_cars_pct !== undefined ? detail.no_cars_pct.toFixed(1) + "%" : "N/A"}<br>` +
+        `<strong>Car/Van availability categories:</strong> None ${detail.no_cars_pct?.toFixed(1) ?? "N/A"}%; one ${detail.one_car_pct?.toFixed(1) ?? "N/A"}%; two ${detail.two_cars_pct?.toFixed(1) ?? "N/A"}%; three or more ${detail.three_plus_cars_pct?.toFixed(1) ?? "N/A"}% (${detail.total_households?.toLocaleString() ?? "N/A"} households)<br>` +
+        `<strong>Digital Accessibility (DERI) (0-1):</strong> ${detail.digital_access !== null && detail.digital_access !== undefined ? detail.digital_access.toFixed(2) : "N/A"}<br>` +
+        `<strong>DERI score (0-10):</strong> ${detail.deri_score?.toFixed(2) ?? "N/A"}; Demography ${detail.demography_score?.toFixed(2) ?? "N/A"}, Deprivation ${detail.deprivation_score?.toFixed(2) ?? "N/A"}, Broadband ${detail.broadband_score?.toFixed(2) ?? "N/A"}<br>` +
+        `<strong>Average download speed:</strong> ${detail.avg_download_speed_mbps?.toFixed(1) ?? "N/A"} Mbps; no superfast ${detail.no_superfast_broadband_pct?.toFixed(1) ?? "N/A"}%; slow ${detail.slow_connections_pct?.toFixed(1) ?? "N/A"}%`;
       popupHtml += `</div></details>`;
 
       if (detail.ons_pop_total !== null && detail.ons_pop_total !== undefined) {

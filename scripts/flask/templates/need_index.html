@@ -392,7 +392,8 @@
         `<strong>LSOA Name:</strong> ${detail.lsoa_name || name || "N/A"}<br>` +
         `<strong>Rural / Urban Classification:</strong> ${detail.ruc21nm || (detail.is_rural ? "Rural" : "Urban") || "N/A"}<br>` +
         `<strong>Need Index:</strong> ${detail.need_index !== null && detail.need_index !== undefined ? detail.need_index.toFixed(4) : "N/A"}` +
-        `<details class="map-popup-details"><summary>Need indicators</summary><div>` +
+        `<details class="map-popup-details"><summary>Need inputs</summary><div>` +
+        `` +
         `<strong>Depression Prevalence (%):</strong> ${detail.depression_prevalence_pct !== null && detail.depression_prevalence_pct !== undefined ? detail.depression_prevalence_pct.toFixed(2) : "N/A"}<br>` +
         `${detail.depression_coverage_pct !== null && detail.depression_coverage_pct !== undefined ? `<strong>Depression practice data coverage:</strong> ${detail.depression_coverage_pct.toFixed(1)}% of registered patients<br>` : ""}` +
         `<strong>SMI Prevalence (%):</strong> ${detail.smi_prevalence_pct !== null && detail.smi_prevalence_pct !== undefined ? detail.smi_prevalence_pct.toFixed(2) : "N/A"}<br>` +

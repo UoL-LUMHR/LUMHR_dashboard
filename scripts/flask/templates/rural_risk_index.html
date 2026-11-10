@@ -552,13 +552,23 @@
         `<strong>LSOA:</strong> ${code}<br>` +
         `<strong>LSOA Name:</strong> ${detail.lsoa_name || name || "N/A"}<br>` +
         `<strong>Rural Risk Index:</strong> ${detail.rural_risk_index !== null && detail.rural_risk_index !== undefined ? detail.rural_risk_index.toFixed(4) : "N/A"}<br>` +
-        `<strong>Rural / Urban Classification:</strong> ${detail.ruc21nm || "N/A"}<br>` +
+        `<strong>Rural / Urban Classification:</strong> ${detail.ruc21nm || "N/A"}` +
+        `<details class="map-popup-details"><summary>Rural access and transport inputs</summary><div>` +
+        `` +
         `<strong>Rural Isolation Score (0-1):</strong> ${detail.rural_isolation_score !== null && detail.rural_isolation_score !== undefined ? detail.rural_isolation_score.toFixed(2) : "N/A"}<br>` +
-        `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : (detail.dwp_dla_source_status || "N/A")}<br>` +
-        `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : (detail.dwp_pip_source_status || "N/A")}<br>` +
         `<strong>GP Travel Time (PT / Walk):</strong> ${detail.gp_pt_time !== null && detail.gp_pt_time !== undefined ? detail.gp_pt_time.toFixed(1) + " min" : "N/A"}<br>` +
         `<strong>GP Travel Time (Car):</strong> ${detail.gp_car_time !== null && detail.gp_car_time !== undefined ? detail.gp_car_time.toFixed(1) + " min" : "N/A"}<br>` +
         `<strong>Households with No Car/Van:</strong> ${detail.no_cars_pct !== null && detail.no_cars_pct !== undefined ? detail.no_cars_pct.toFixed(1) + "%" : "N/A"}` +
+        `</div></details>` +
+        `<details class="map-popup-details"><summary>DWP rates and claimant counts</summary><div>` +
+        `<strong>DWP DLA rate:</strong> ${detail.dwp_dla_rate_pct !== null && detail.dwp_dla_rate_pct !== undefined ? detail.dwp_dla_rate_pct.toFixed(2) + "%" : (detail.dwp_dla_source_status || "N/A")}<br>` +
+        `<strong>DWP PIP rate:</strong> ${detail.dwp_pip_rate_pct !== null && detail.dwp_pip_rate_pct !== undefined ? detail.dwp_pip_rate_pct.toFixed(2) + "%" : (detail.dwp_pip_source_status || "N/A")}`;
+      if (detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined) {
+        popupHtml += `<br><strong>DWP DLA claimants:</strong> ${Math.round(detail.dwp_dla_count).toLocaleString()}` +
+          `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : (detail.dwp_pip_source_status || "N/A")}`;
+      }
+      popupHtml += `</div></details>`;
+      popupHtml +=
         `<details class="map-popup-details"><summary>Housing, energy, and deprivation</summary><div>` +
         `<strong>Households in Fuel Poverty (2024):</strong> ${detail.fuel_poverty_pct !== null && detail.fuel_poverty_pct !== undefined ? detail.fuel_poverty_pct.toFixed(1) + "%" : "N/A"}<br>` +
         `<strong>Properties Not on Gas Grid (2024):</strong> ${detail.properties_not_on_gas_grid_pct !== null && detail.properties_not_on_gas_grid_pct !== undefined ? detail.properties_not_on_gas_grid_pct.toFixed(1) + "%" : (detail.properties_not_on_gas_grid_status || "N/A")}<br>` +
@@ -569,22 +579,18 @@
         `<strong>Housing Tenure Vulnerability:</strong> ${detail.housing_tenure_vulnerability !== null && detail.housing_tenure_vulnerability !== undefined ? detail.housing_tenure_vulnerability.toFixed(4) : "N/A"}<br>` +
         `<strong>Overcrowding Risk:</strong> ${detail.overcrowding_risk !== null && detail.overcrowding_risk !== undefined ? detail.overcrowding_risk.toFixed(4) : "N/A"}<br>` +
         `<strong>IMD 2025 Decile:</strong> ${detail.imd_2025_decile !== null && detail.imd_2025_decile !== undefined ? detail.imd_2025_decile : "N/A"} (Rank: ${detail.imd_2025_rank ? detail.imd_2025_rank.toLocaleString() : "N/A"})<br>` +
+        `<strong>IMD deprivation component (0-1):</strong> ${detail.imd_deprivation_score !== null && detail.imd_deprivation_score !== undefined ? detail.imd_deprivation_score.toFixed(4) : "N/A"}<br>` +
+        `<strong>LSOAC risk component (0-1):</strong> ${detail.lsoac_risk_score !== null && detail.lsoac_risk_score !== undefined ? detail.lsoac_risk_score.toFixed(4) : "N/A"}<br>` +
         `<strong>LSOAC Subgroup:</strong> ${detail.subgroup_code ? detail.subgroup_code + ': ' + (detail.subgroup_name || "N/A") : "N/A"}<br>` +
         `<strong>LSOAC Group:</strong> ${detail.group_name || "N/A"}<br>` +
         `<strong>LSOAC Supergroup:</strong> ${detail.supergroup_name || "N/A"}` +
         `</div></details>`;
 
-      if (detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined) {
-        popupHtml += `<details class="map-popup-details"><summary>DWP claimant details</summary><div>` +
-          `<strong>DWP DLA claimants:</strong> ${detail.dwp_dla_count !== null && detail.dwp_dla_count !== undefined ? Math.round(detail.dwp_dla_count).toLocaleString() : (detail.dwp_dla_source_status || "N/A")}` +
-          `<br><strong>DWP PIP claimants:</strong> ${detail.dwp_pip_count !== null && detail.dwp_pip_count !== undefined ? Math.round(detail.dwp_pip_count).toLocaleString() : (detail.dwp_pip_source_status || "N/A")}`;
-        popupHtml += `</div></details>`;
-      }
-
       if (detail.total_households_2021 !== null && detail.total_households_2021 !== undefined) {
         popupHtml +=
           `<details class="map-popup-details"><summary>Household composition (Census 2021)</summary><div>` +
           `<strong>Total Households:</strong> ${Math.round(detail.total_households_2021).toLocaleString()}<br>` +
+          `<strong>Household Vulnerability component (0-1):</strong> ${detail.household_vulnerability_score !== null && detail.household_vulnerability_score !== undefined ? detail.household_vulnerability_score.toFixed(4) : "N/A"}<br>` +
           `&bull; <strong>Single Older Adults (66+) Living Alone:</strong> ${detail.single_pensioner_hh_pct !== null ? detail.single_pensioner_hh_pct.toFixed(1) + "%" : "N/A"}${detail.single_pensioner_hh_count !== null ? ` (${Math.round(detail.single_pensioner_hh_count)})` : ""}<br>` +
           `&bull; <strong>All-Pensioner Couples (66+):</strong> ${detail.pensioner_couple_hh_pct !== null ? detail.pensioner_couple_hh_pct.toFixed(1) + "%" : "N/A"}${detail.pensioner_couple_hh_count !== null ? ` (${Math.round(detail.pensioner_couple_hh_count)})` : ""}<br>` +
           `&bull; <strong>Lone Parent Families:</strong> ${detail.lone_parent_dep_hh_pct !== null ? detail.lone_parent_dep_hh_pct.toFixed(1) + "%" : "N/A"}${detail.lone_parent_dep_hh_count !== null ? ` (${Math.round(detail.lone_parent_dep_hh_count)})` : ""}<br>` +
