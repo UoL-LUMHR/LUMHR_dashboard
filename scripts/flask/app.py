@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
@@ -127,35 +128,32 @@ def _read_public_dwp_august_counts(base_dir: Path) -> pd.DataFrame:
 
     def read_component(path: Path, value_name: str) -> pd.DataFrame:
         with path.open(encoding="utf-8-sig", newline="") as handle:
-            rows = list(csv.reader(handle))
-        header_idx = next((idx for idx, row in enumerate(rows) if row and row[0] in {"Month", "Quarter"}), None)
-        if header_idx is None:
-            return pd.DataFrame(columns=["LSOA_CODE", "year", value_name])
-        header = rows[header_idx]
-        period_columns = []
-        for idx, label in enumerate(header[1:], start=1):
-            label = str(label).strip()
-            if not label.startswith("Aug-"):
-                continue
-            try:
-                year = int(pd.to_datetime(label, format="%b-%y").year)
-            except (TypeError, ValueError):
-                continue
-            if year in DWP_AVAILABLE_YEARS:
-                period_columns.append((idx, year))
-        records = []
-        for row in rows[header_idx + 1:]:
-            if not row:
-                continue
-            code = name_to_code.get(str(row[0]).strip())
-            if not code:
-                continue
-            for idx, year in period_columns:
-                value = row[idx] if idx < len(row) else ""
-                numeric = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
-                if pd.notna(numeric):
-                    records.append((code, year, float(numeric)))
-        return pd.DataFrame(records, columns=["LSOA_CODE", "year", value_name])
+            reader = csv.reader(handle)
+            header = next((row for row in reader if row and row[0] in {"Month", "Quarter"}), None)
+            if header is None:
+                return pd.DataFrame(columns=["LSOA_CODE", "year", value_name])
+            period_columns = []
+            for idx, label in enumerate(header[1:], start=1):
+                label = str(label).strip()
+                if not label.startswith("Aug-"):
+                    continue
+                try:
+                    year = int(pd.to_datetime(label, format="%b-%y").year)
+                except (TypeError, ValueError):
+                    continue
+                if year in DWP_AVAILABLE_YEARS:
+                    period_columns.append((idx, year))
+            records = []
+            for row in reader:
+                if not row:
+                    continue
+                code = name_to_code.get(str(row[0]).strip())
+                if not code:
+                    continue
+                records.extend((code, year, row[idx] if idx < len(row) else "") for idx, year in period_columns)
+        result = pd.DataFrame(records, columns=["LSOA_CODE", "year", value_name])
+        result[value_name] = pd.to_numeric(result[value_name], errors="coerce")
+        return result.dropna(subset=[value_name])
 
     dla = read_component(files["dwp_dla_count"], "dwp_dla_count")
     pip = read_component(files["dwp_pip_count"], "dwp_pip_count")
@@ -192,34 +190,31 @@ def _load_public_dwp_pip_suppression(base_dir_str: str) -> pd.DataFrame:
     suppressed = []
     for status_column, filename in source_files.items():
         with (source_dir / filename).open(encoding="utf-8-sig", newline="") as handle:
-            rows = list(csv.reader(handle))
-        header_idx = next(
-            (idx for idx, row in enumerate(rows) if row and row[0] in {"Month", "Quarter"}),
-            None,
-        )
-        if header_idx is None:
-            continue
-        periods = {}
-        for idx, label in enumerate(rows[header_idx][1:], start=1):
-            label = str(label).strip()
-            if not label.startswith("Aug-"):
+            reader = csv.reader(handle)
+            header = next((row for row in reader if row and row[0] in {"Month", "Quarter"}), None)
+            if header is None:
                 continue
-            try:
-                year = int(pd.to_datetime(label, format="%b-%y").year)
-            except (TypeError, ValueError):
-                continue
-            if year in DWP_AVAILABLE_YEARS:
-                periods[idx] = year
+            periods = {}
+            for idx, label in enumerate(header[1:], start=1):
+                label = str(label).strip()
+                if not label.startswith("Aug-"):
+                    continue
+                try:
+                    year = int(pd.to_datetime(label, format="%b-%y").year)
+                except (TypeError, ValueError):
+                    continue
+                if year in DWP_AVAILABLE_YEARS:
+                    periods[idx] = year
 
-        for row in rows[header_idx + 1:]:
-            if not row:
-                continue
-            code = name_to_code.get(str(row[0]).strip())
-            if not code:
-                continue
-            for idx, year in periods.items():
-                if idx < len(row) and row[idx].strip() == "..":
-                    suppressed.append((code, year, status_column, "Suppressed in DWP source"))
+            for row in reader:
+                if not row:
+                    continue
+                code = name_to_code.get(str(row[0]).strip())
+                if not code:
+                    continue
+                for idx, year in periods.items():
+                    if idx < len(row) and row[idx].strip() == "..":
+                        suppressed.append((code, year, status_column, "Suppressed in DWP source"))
 
     if not suppressed:
         return pd.DataFrame(columns=output_columns)
@@ -386,7 +381,7 @@ def _load_public_dwp_panel(base_dir: str) -> pd.DataFrame:
                 * allocated["ONS_Pop_18to64"]
                 / allocated["parent_child_population"].replace(0.0, pd.NA)
             )
-            allocated["dwp_denominator"] = allocated["dwp_denominator"].fillna(
+            allocated["dwp_denominator"] = pd.to_numeric(allocated["dwp_denominator"], errors="coerce").fillna(
                 pd.to_numeric(allocated["ONS_Pop_18to64"], errors="coerce")
             )
             allocated["dwp_dla_pip_count"] = allocated[["dwp_dla_count", "dwp_pip_count"]].sum(axis=1, min_count=1)
@@ -451,9 +446,12 @@ def _load_dwp_fallback_population(base_dir: str) -> pd.DataFrame:
 def _parse_float_arg(name: str, default: float) -> float:
     raw = request.args.get(name, str(default))
     try:
-        return float(raw)
+        value = float(raw)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid float for '{name}': {raw}") from exc
+    if not math.isfinite(value):
+        raise ValueError(f"Invalid float for '{name}': {raw}")
+    return value
 
 
 def _parse_int_arg(name: str, default: int) -> int:
@@ -3139,4 +3137,4 @@ def samhi_ml_metrics_api():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5005, debug=True)
+    app.run(host="0.0.0.0", port=5005, debug=False)

@@ -87,3 +87,14 @@ cd scripts/streamlit
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+### Checking the Flask dashboard
+
+From the repository root, with the Flask requirements installed:
+
+```bash
+python -m unittest discover -s scripts/flask/tests -v
+python -m compileall -q scripts
+```
+
+The route tests load the bundled datasets and check the main pages, Need Index output, and invalid weight handling.

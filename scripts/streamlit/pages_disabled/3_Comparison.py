@@ -9,7 +9,7 @@ from data.comparison_loader import get_comparison_bundle_cached, resolve_base_di
 
 st.set_page_config(
     page_title="Small Area Mental Health Index (SAMHI)",
-    page_icon="assets/favicon.ico",    
+    page_icon=str(Path(__file__).resolve().parents[1] / "assets" / "favicon.png"),
     layout="wide"
 )
 

@@ -9,11 +9,9 @@ from analysis.allocation import (
     allocate_registers_to_lsoa,
     build_gp_marker_df,
     build_gp_master,
-    get_lsoa_centroids,
     get_lsoa_centroids_cached,
     prepare_depression,
     prepare_gp_locations,
-    prepare_lsoa_geography,
     prepare_lsoa_geography_cached,
     prepare_lsoa_map_base_cached,
     prepare_mapping_from_sex_split,
@@ -182,32 +180,4 @@ def get_prepared_bundle_cached(base_dir_str: str) -> dict[str, object]:
         "mismatch_summary": mismatch_summary,
         "out_of_area_lsoa_codes": out_of_area_lsoa_codes,
         "out_of_area_patients": out_of_area_patients,
-    }
-
-
-@st.cache_data(show_spinner=False)
-def get_comparison_bundle_cached(base_dir_str: str) -> dict[str, object]:
-    """Load only the data needed by the Comparison page.
-
-    This intentionally skips centroid and GP marker generation because those
-    geospatial transforms are not required for comparison metrics.
-    """
-    raw = load_raw_data_cached(base_dir_str)
-
-    dep_df = prepare_depression(raw["dep_raw"])
-    smi_df = prepare_smi(raw["smi_raw"])
-    prescribing_df = prepare_prescribing(raw["prescribing_raw"])
-    mapping_df = prepare_mapping_from_sex_split(raw["mapping_male_raw"], raw["mapping_female_raw"])
-    lsoa_gdf = prepare_lsoa_geography(raw["lsoa_raw"])
-    samhi_df = prepare_samhi(raw["samhi_raw"])
-
-    gp_master = build_gp_master(dep_df, smi_df, prescribing_df)
-    mapped_lsoa, mismatch_summary = allocate_registers_to_lsoa(mapping_df, gp_master)
-
-    lsoa_metrics = lsoa_gdf.merge(mapped_lsoa, on="LSOA_CODE", how="left")
-    lsoa_metrics = join_samhi(lsoa_metrics, samhi_df)
-
-    return {
-        "lsoa_metrics": lsoa_metrics,
-        "mismatch_summary": mismatch_summary,
     }

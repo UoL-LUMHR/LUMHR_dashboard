@@ -1,9 +1,11 @@
+from pathlib import Path
+
 import streamlit as st
 
 
 st.set_page_config(
     page_title="Lincolnshire Mental Health Dashboard", 
-    page_icon="assets/favicon.ico",
+    page_icon=str(Path(__file__).resolve().parent / "assets" / "favicon.png"),
     layout="wide"
 )
 

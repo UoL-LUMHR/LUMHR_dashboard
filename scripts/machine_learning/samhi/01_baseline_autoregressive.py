@@ -20,12 +20,10 @@ Supports:
   - --target {level, change}
 """
 
-import os
-import sys
 import argparse
 import logging
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd

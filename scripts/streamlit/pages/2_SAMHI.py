@@ -12,7 +12,7 @@ from maps.folium_map import build_choropleth_map
 
 st.set_page_config(
     page_title="Small Area Mental Health Index (SAMHI)",
-    page_icon="assets/favicon.ico",    
+    page_icon=str(Path(__file__).resolve().parents[1] / "assets" / "favicon.png"),
     layout="wide"
 )
 

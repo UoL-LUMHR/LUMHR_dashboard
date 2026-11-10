@@ -118,6 +118,9 @@
   .samhi-history-note { margin:.35rem 0 0; color:#657985; font-size:.69rem; line-height:1.35; }
   @media (max-width:600px) { .map-inspector { left:10px; bottom:10px; width:calc(100vw - 20px); max-height:55vh; } }
   #map_legend {
+    box-sizing: border-box;
+    width: 280px;
+    max-width: calc(100vw - 48px);
     max-height: min(80vh, 900px);
     overflow-x: hidden;
     overflow-y: auto;
@@ -130,6 +133,8 @@
     }
   }
   .samhi-map-settings { border-top:1px solid #e4ecef; padding-top:8px; margin-top:7px; }
+  .samhi-legend-scale { width:100%; height:12px; box-sizing:border-box; border-radius:3px; margin-bottom:3px; }
+  .samhi-legend-values { display:flex; justify-content:space-between; width:100%; box-sizing:border-box; font-size:10px; color:#445763; }
   .samhi-legend-note { margin-top:5px; color:#4f5f69; font-size:10px; line-height:1.35; white-space:pre-line; }
 </style>
 {% endblock %}
@@ -1244,8 +1249,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     div.innerHTML = `
       <div style="font-weight:700; margin-bottom:4px;">${title}</div>
-      <div style="width:160px; height:12px; background:${gradient}; border-radius:3px; margin-bottom:3px;"></div>
-      <div style="display:flex; justify-content:space-between; font-size:10px; color:#445763;">
+      <div class="samhi-legend-scale" style="background:${gradient};"></div>
+      <div class="samhi-legend-values">
         <span>${minVal.toFixed(2)}</span>
         <span>${((minVal + maxVal)/2).toFixed(2)}</span>
         <span>${maxVal.toFixed(2)}</span>

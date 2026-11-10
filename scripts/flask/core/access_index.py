@@ -28,6 +28,8 @@ INVERTED_COLUMNS = {"MH_PCA_Normalized", "Dep_PCA_Normalized"}
 def normalize_weights(weight_values: dict[str, float]) -> dict[str, float]:
     values = np.array([float(weight_values[k]) for k in WEIGHT_KEYS], dtype=float)
     values = np.clip(values, a_min=0.0, a_max=None)
+    if values.max() > np.finfo(float).max / len(values):
+        values = values / values.max()
     total = float(values.sum())
     if np.isclose(total, 0.0):
         equal = 1.0 / len(WEIGHT_KEYS)

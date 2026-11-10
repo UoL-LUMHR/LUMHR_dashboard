@@ -1,6 +1,5 @@
 import pandas as pd
 import geopandas as gpd
-import os
 
 # --- Configuration ---
 # I have kept the file paths consistent with your previous directory structure

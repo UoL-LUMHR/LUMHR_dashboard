@@ -25,7 +25,6 @@ Evaluates:
 Exports results to scripts/machine_learning/samhi/results/
 """
 
-import os
 import sys
 import argparse
 import logging
