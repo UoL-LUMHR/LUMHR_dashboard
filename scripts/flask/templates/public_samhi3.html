@@ -28,10 +28,12 @@
   .proxy-chart-legend-item { display:inline-flex; align-items:center; gap:.3rem; }
   .proxy-chart-key { display:inline-block; width:14px; height:3px; border-radius:2px; }
   @media (max-width:600px) { .proxy-inspector { left:10px; bottom:10px; width:calc(100vw - 20px); max-height:48vh; } }
-  #proxy_legend { box-sizing:border-box; width:280px; max-width:calc(100vw - 48px); margin-bottom:64px; background:rgba(255,255,255,.94); padding:8px 12px; border-radius:8px; border:1px solid #c8d9e2; font-size:11px; line-height:1.3; }
+  #proxy_legend { box-sizing:border-box; width:280px; max-width:calc(100vw - 48px); max-height:80vh; overflow-y:auto; background:rgba(255,255,255,.94); padding:8px 12px; border-radius:8px; border:1px solid #c8d9e2; font-size:11px; line-height:1.3; }
+  .proxy-map-settings { border-top:1px solid #e4ecef; padding-top:7px; margin-top:7px; }
   .proxy-legend-title { font-weight:700; margin-bottom:4px; overflow-wrap:anywhere; }
   .proxy-legend-scale { width:100%; height:12px; border-radius:3px; }
   .proxy-legend-values { display:flex; justify-content:space-between; width:100%; font-size:10px; color:#445763; margin-top:3px; }
+  .proxy-legend-note { margin-top:5px; color:#4f5f69; font-size:10px; line-height:1.35; white-space:pre-line; }
 </style>
 {% endblock %}
 
@@ -131,14 +133,6 @@
       </div>
       <div class="muted" style="font-size:.72rem; margin-top:.3rem; line-height:1.3;">2017–2022: rolling validation predictions. 2023–2025: model forecasts alongside the proxy calculated from the three components. 2026–2027 projections use component data through 2025; 2027 builds on the 2026 projected score. Comparison-year differences are index points; positive means a higher score, not a clinical judgement of “worse”.</div>
     </div>
-    <div class="control">
-      <label style="font-weight:700; font-size:.86rem; display:block; margin-bottom:.35rem;">Map Settings</label>
-      <label style="display:block; font-size:.82rem; margin:.25rem 0; cursor:pointer;"><input id="show_urban" type="checkbox" checked> Show Urban LSOAs</label>
-      <label style="display:block; font-size:.82rem; margin:.25rem 0; cursor:pointer;"><input id="show_rural" type="checkbox" checked> Show Rural LSOAs</label>
-      <label for="layer_opacity" style="display:block; font-size:.82rem; font-weight:600; margin-top:.55rem;">Layer Opacity</label>
-      <input id="layer_opacity" type="range" min="0.1" max="1" step="0.05" value="0.82" style="width:100%;">
-      <div id="layer_opacity_value" class="muted" style="font-size:.75rem; margin-top:.15rem;">Opacity: 0.82</div>
-    </div>
     <div class="proxy-metric" id="metric_summary">Loading validation summary...</div>
     <details class="control">
       <summary style="cursor:pointer; font-weight:700; font-size:.86rem;">Top predictive drivers (<span id="shap_method_label">Bayesian Ridge LinearSHAP</span>)</summary>
@@ -193,10 +187,21 @@ document.addEventListener("DOMContentLoaded", () => {
   let selectedAreaCode = null;
   let historyRequestId = 0;
   const map = L.map("map", { zoomControl: false, preferCanvas: true }).fitBounds([[52.64022, -0.82065], [53.61637, 0.35797]], { animate:false });
-  L.control.zoom({ position:"topright" }).addTo(map);
+  L.control.zoom({ position:"topleft" }).addTo(map);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:18, attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
-  const legend = L.control({position:"bottomright"});
-  legend.onAdd = () => { const d=L.DomUtil.create("div","info legend"); d.id="proxy_legend"; d.innerHTML="Loading..."; return d; };
+  const legend = L.control({position:"topright"});
+  legend.onAdd = () => {
+    const d=L.DomUtil.create("div","info legend"); d.id="proxy_legend";
+    d.innerHTML=`<div id="proxy_legend_content">Loading...</div><div class="proxy-map-settings">
+      <div style="font-weight:700; margin-bottom:4px;">Filter Area Classification</div>
+      <label style="display:block; margin-bottom:3px; cursor:pointer;"><input id="show_urban" type="checkbox" checked> Show Urban LSOAs</label>
+      <label style="display:block; cursor:pointer;"><input id="show_rural" type="checkbox" checked> Show Rural LSOAs</label>
+      <label for="layer_opacity" style="display:block; font-weight:600; margin-top:7px; margin-bottom:3px;">Overlay Transparency</label>
+      <input id="layer_opacity" type="range" min="0.1" max="1" step="0.05" value="0.82" style="width:100%;">
+      <div id="layer_opacity_value" style="font-size:10px; color:#4f5f69; margin-top:2px;">Opacity: 0.82</div>
+    </div>`;
+    L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d); return d;
+  };
   legend.addTo(map);
 
   const yearSelect = document.getElementById("year_select");
@@ -332,11 +337,19 @@ document.addEventListener("DOMContentLoaded", () => {
   function title() {
     if (state.mode === "proxy") return "Public SAMHI-3 proxy";
     if (state.mode === "forecast") return `${document.querySelector('#model_select option:checked').textContent} forecast`;
-    if (state.mode === "error") return "Forecast error (forecast − proxy)";
+    if (state.mode === "error") return "Forecast error (forecast - proxy)";
     if (state.mode === "comparison_error") return "SAMHI-3 vs SAMHI difference";
     if (state.mode === "model_change") return "Model prediction change from previous year";
     if (state.mode === "comparison_difference") return comparisonLabel();
     return "Public SAMHI-3 change";
+  }
+  function legendNote() {
+    if (state.mode === "error") return "Positive means the model forecast is higher\nNegative means it is lower";
+    if (state.mode === "comparison_error") return "Positive means SAMHI-3 is higher relative to its yearly average";
+    if (state.mode === "model_change") return "Positive means higher relative need (worsening)\nNegative means lower relative need (improving)";
+    if (state.mode === "change") return "Positive means higher relative need (worsening)\nNegative means lower relative need (improving)";
+    if (state.mode === "comparison_difference") return "Positive means higher relative need\nNegative means lower relative need";
+    return "Lower SAMHI = lower relative mental health need\nHigher SAMHI = higher relative mental health need";
   }
   function paletteForMode() {
     return (state.mode === "error" || state.mode === "change" || state.mode === "comparison_error" || state.mode === "model_change" || state.mode === "comparison_difference")
@@ -348,11 +361,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const valid=values.filter(Number.isFinite);
     const palette=paletteForMode(); const gradient=`linear-gradient(to right,${palette.join(",")})`;
     if(!valid.length){
-      document.getElementById("proxy_legend").innerHTML=`<div class="proxy-legend-title">${title()}</div><div class="proxy-legend-scale" style="background:${gradient};opacity:.45;"></div><div class="proxy-legend-values"><span>N/A for selected year</span></div>`;
+      document.getElementById("proxy_legend_content").innerHTML=`<div class="proxy-legend-title">${title()}</div><div class="proxy-legend-scale" style="background:${gradient};opacity:.45;"></div><div class="proxy-legend-values"><span>N/A for selected year</span></div><div class="proxy-legend-note">${legendNote()}</div>`;
       return;
     }
     const min=state.range[0], max=state.range[1];
-    document.getElementById("proxy_legend").innerHTML=`<div class="proxy-legend-title">${title()}</div><div class="proxy-legend-scale" style="background:${gradient};"></div><div class="proxy-legend-values"><span>${min.toFixed(2)}</span><span>${((min+max)/2).toFixed(2)}</span><span>${max.toFixed(2)}</span></div>`;
+    document.getElementById("proxy_legend_content").innerHTML=`<div class="proxy-legend-title">${title()}</div><div class="proxy-legend-scale" style="background:${gradient};"></div><div class="proxy-legend-values"><span>${min.toFixed(2)}</span><span>${((min+max)/2).toFixed(2)}</span><span>${max.toFixed(2)}</span></div><div class="proxy-legend-note">${legendNote()}</div>`;
   }
   function hexToRgb(hex) {
     const value=hex.replace("#",""); return [parseInt(value.slice(0,2),16),parseInt(value.slice(2,4),16),parseInt(value.slice(4,6),16)];

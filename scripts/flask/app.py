@@ -2018,6 +2018,27 @@ _ML_SHAP_CACHE: dict[tuple[str, int, str], pd.DataFrame] = {}
 _PUBLIC_SAMHI3_CACHE: dict[str, pd.DataFrame] = {}
 _PUBLIC_SAMHI3_METRICS_CACHE: pd.DataFrame | None = None
 _PUBLIC_SAMHI3_SHAP_CACHE: dict[str, pd.DataFrame] = {}
+_ML_RUC_CLASSIFICATION_CACHE: dict[str, dict[str, str]] | None = None
+
+
+def _get_ml_ruc_classification_lookup() -> dict[str, dict[str, str]]:
+    global _ML_RUC_CLASSIFICATION_CACHE
+    if _ML_RUC_CLASSIFICATION_CACHE is None:
+        path = DATASETS_DIR / "rural_urban_classification_2021_lsoa" / "Rural_Urban_Classification_(2021)_of_LSOAs_in_EW.csv"
+        lookup: dict[str, dict[str, str]] = {}
+        if path.exists():
+            rural = pd.read_csv(path, usecols=["LSOA21CD", "RUC21NM", "Urban_rural_flag"], dtype=str)
+            rural["LSOA21CD"] = rural["LSOA21CD"].astype(str).str.strip()
+            rural = rural.drop_duplicates("LSOA21CD", keep="last")
+            lookup = {
+                str(row["LSOA21CD"]): {
+                    "ruc21nm": str(row.get("RUC21NM", "") or ""),
+                    "urban_rural_flag": str(row.get("Urban_rural_flag", "") or ""),
+                }
+                for _, row in rural.iterrows()
+            }
+        _ML_RUC_CLASSIFICATION_CACHE = lookup
+    return _ML_RUC_CLASSIFICATION_CACHE
 
 # Model-specific explanation files. Baselines do not have learned feature
 # drivers, so the page reports their explanation as not applicable.
@@ -3001,6 +3022,7 @@ def samhi_ml_predictions_api():
         all_districts.extend(sorted(df["LAD22NM"].dropna().unique().tolist()))
 
     records = {}
+    ruc_classifications = _get_ml_ruc_classification_lookup()
     pred_cols = [c for c in df_yr.columns if c.startswith("pred_")]
     err_cols = [c for c in df_yr.columns if c.startswith("err_")]
 
@@ -3012,6 +3034,7 @@ def samhi_ml_predictions_api():
             "district": str(row.get("LAD22NM", "")),
             "is_projection": is_projection,
         }
+        item.update(ruc_classifications.get(code, {}))
 
         if is_projection:
             item["actual"] = None
