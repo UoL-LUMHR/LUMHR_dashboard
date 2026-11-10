@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_map_data_item.html" import data_item %}
 
 {% block title %}Mental Health Need Index | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
@@ -55,6 +56,21 @@
         <li><a href="https://pldr.org/dataset/small-area-mental-health-index-samhi-2noyv" target="_blank" rel="noopener noreferrer">SAMHI</a></li>
         <li><a href="https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates" target="_blank" rel="noopener noreferrer">LSOA Mid-Year Population Estimates (Mid-2024 SAPE, ONS)</a></li>
         <li><a href="https://stat-xplore.dwp.gov.uk/" target="_blank" rel="noopener noreferrer">DWP Stat-Xplore</a> - DLA/PIP mental-health and learning-difficulty claimant snapshots data.</li>
+      </ul>
+    </details>
+
+    <details class="control">
+      <summary><strong>Data used on this map</strong></summary>
+      <p class="muted" style="margin:.5rem 0 0; font-size:.76rem;">These are bundled snapshots, not live feeds. The dashboard is refreshed when a new source vintage is added.</p>
+      <ul class="map-data-list">
+        {{ data_item("QOF depression and SMI", "2024/25", "Annual release; refreshed when the next release is incorporated", "2024/25 in this dashboard") }}
+        {{ data_item("GP patient registrations", "July 2026; January 2026 for Parkfields Surgery in Derbyshire and the combined area", "Quarterly (January, April, July, October)", "January 2026 exception; July 2026 elsewhere") }}
+        {{ data_item("Antidepressant prescribing", "May 2026", "Monthly source; this map uses a fixed May 2026 extract", "May 2026 in this dashboard") }}
+        {{ data_item("Official SAMHI", "Annual values for 2011–2022", "Annual historical series; future publication cadence is not stated in the project data", "2011") }}
+        {{ data_item("DWP DLA/PIP claimant indicators", "August snapshots for 2023, 2024 and 2025; default is 2025", "The bundled map snapshots are annual; no future refresh schedule is recorded", "2023 in this map (source files include DLA from 2018 and PIP from 2019)") }}
+        {{ data_item("ONS small-area population estimates", "Mid-2024", "Annual ONS estimates; dashboard refresh follows source release", "Mid-2024 in this dashboard") }}
+        {{ data_item("Public SAMHI-3 proxy overlay", "Annual component-based proxy values for 2011–2025", "Annual series; model files refresh when the research pipeline is rerun", "2011") }}
+        {{ data_item("LSOA boundaries and geography lookup", "2021 boundaries and the 2011-to-2021 ONS lookup", "Static geography reference; updated when ONS geography changes", "2021 boundaries; 2011 lookup geography") }}
       </ul>
     </details>
 

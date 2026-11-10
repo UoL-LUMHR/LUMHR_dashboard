@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_map_data_item.html" import data_item %}
 
 {% block title %}Mental Health Access Index | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
@@ -67,6 +68,22 @@
         <li><a href="https://www.ons.gov.uk/datasets/TS045/editions/2021/versions/4" target="_blank" rel="noopener noreferrer">Car or van availability (Census 2021, ONS)</a></li>
         <li><a href="https://github.com/GreaterManchesterODA/Digital-Exclusion-Risk-Index" target="_blank" rel="noopener noreferrer">Digital Exclusion Risk Index (DERI v1.6, GMCA)</a></li>
         <li><a href="https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates" target="_blank" rel="noopener noreferrer">LSOA Mid-Year Population Estimates (Mid-2024 SAPE, ONS)</a></li>
+      </ul>
+    </details>
+
+    <details class="control">
+      <summary><strong>Data used on this map</strong></summary>
+      <p class="muted" style="margin:.5rem 0 0; font-size:.76rem;">These are bundled snapshots, not live feeds. The dashboard is refreshed when a new source vintage is added.</p>
+      <ul class="map-data-list">
+        {{ data_item("QOF mental-health and depression measures", "2024/25", "Annual release; refreshed when the next release is incorporated", "2024/25 in this dashboard") }}
+        {{ data_item("GP patient registrations", "July 2026", "Quarterly (January, April, July, October)", "July 2026 in this dashboard") }}
+        {{ data_item("GP practice locations (NHS ODS)", "Saved ODS practice export; its extraction date is not recorded", "ODS source data updates nightly; this local export must be replaced manually", "Not recorded in the bundled export") }}
+        {{ data_item("GP and hospital journey times", "2019 DfT tables", "DfT release schedule varies; the dashboard currently loads the 2019 tables", "2019 in this dashboard") }}
+        {{ data_item("Rural/Urban Classification", "2021 LSOA classification", "Classification snapshot; no annual refresh", "2021") }}
+        {{ data_item("Car or van availability (Census TS045)", "2021 Census", "Census snapshot; no annual refresh", "2021") }}
+        {{ data_item("Digital Exclusion Risk Index", "DERI v1.6", "No update cadence or reference period is recorded in the project data", "Not stated in the bundled source notes") }}
+        {{ data_item("ONS small-area population estimates", "Mid-2024", "Annual ONS estimates; dashboard refresh follows source release", "Mid-2024 in this dashboard") }}
+        {{ data_item("LSOA boundaries and postcode lookup", "2021 boundaries and February 2026 postcode-to-LSOA lookup", "Static geography references; updated when a new source release is incorporated", "2021 boundaries; February 2026 postcode lookup") }}
       </ul>
     </details>
 

@@ -1,0 +1,6 @@
+{% macro data_item(name, vintage, cadence, first_period) -%}
+<li class="map-data-item">
+  <strong>{{ name }}</strong>
+  <span class="map-data-meta">Map uses: {{ vintage }}<br>Source updates: {{ cadence }}<br>Earliest period shown: {{ first_period }}</span>
+</li>
+{%- endmacro %}

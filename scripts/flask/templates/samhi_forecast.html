@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_map_data_item.html" import data_item %}
 
 {% block title %}SAMHI Machine Learning Forecast & Projections | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
@@ -275,6 +276,37 @@
           </tbody>
         </table>
       </div>
+    </details>
+
+    <details class="control">
+      <summary><strong>Data Sources</strong></summary>
+      <ul class="muted" style="margin:.5rem 0 0; padding-left:1.1rem;">
+        <li><a href="https://pldr.org/dataset/small-area-mental-health-index-samhi-2noyv" target="_blank" rel="noopener noreferrer">PLDR Small Area Mental Health Index (SAMHI)</a> — historical model target.</li>
+        <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/quality-and-outcomes-framework-achievement-prevalence-and-exceptions-data/2024-25" target="_blank" rel="noopener noreferrer">NHS Quality and Outcomes Framework</a> — practice service measures.</li>
+        <li><a href="https://www.gov.uk/government/statistical-data-sets/journey-time-statistics-data-tables-jts" target="_blank" rel="noopener noreferrer">Department for Transport Journey Time Statistics</a>.</li>
+        <li><a href="https://www.gov.uk/government/collections/rural-urban-classification" target="_blank" rel="noopener noreferrer">ONS/Defra Rural/Urban Classification</a> and Census 2021 household, tenure and vehicle tables.</li>
+        <li><a href="https://www.gov.uk/government/statistics/english-indices-of-deprivation-2025" target="_blank" rel="noopener noreferrer">English Indices of Deprivation 2025</a>.</li>
+        <li><a href="https://www.gov.uk/government/statistics/sub-regional-fuel-poverty-data-2026-2024-data" target="_blank" rel="noopener noreferrer">Fuel poverty 2024 data</a> and <a href="https://www.gov.uk/government/statistics/lsoa-estimates-of-households-not-connected-to-the-gas-network" target="_blank" rel="noopener noreferrer">gas-grid disconnection estimates</a>.</li>
+        <li><a href="https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates" target="_blank" rel="noopener noreferrer">ONS small-area population estimates</a>.</li>
+        <li>Precomputed SAMHI predictions, projections, validation metrics and feature-importance files bundled with the dashboard.</li>
+      </ul>
+    </details>
+
+    <details class="control">
+      <summary><strong>Data used on this map</strong></summary>
+      <p class="muted" style="margin:.5rem 0 0; font-size:.76rem;">The map reads precomputed model outputs. These files update only when the research pipeline is rerun; future values are estimates, not observed data.</p>
+      <ul class="map-data-list">
+        {{ data_item("Historical SAMHI target", "Annual observations for 2011–2022", "Annual series; future publication cadence is not stated in the project data", "2011") }}
+        {{ data_item("Model validation predictions", "Displayed years begin in 2017; test sets cover 2018–2019 or 2020–2022", "Generated when the research pipeline is rerun", "2017 for displayed validation predictions") }}
+        {{ data_item("Forward projections", "2023–2027; 2026–2027 are longer-range projections", "Generated when the forecasting pipeline is rerun; not an automatic feed", "2023 forecast year") }}
+        {{ data_item("QOF service measures", "2024/25", "Annual release; model data refresh follows pipeline rerun", "2024/25 in the bundled features") }}
+        {{ data_item("Journey times", "2019 DfT tables", "DfT release schedule varies; the bundled model features use 2019", "2019 in the bundled features") }}
+        {{ data_item("Rurality and Census features", "Rural/Urban Classification and Census tables from 2021", "Static snapshots; no annual refresh", "2021") }}
+        {{ data_item("Deprivation", "IMD 2025", "Periodic release; next release timing is not stated in the project data", "2025 in the bundled features") }}
+        {{ data_item("Fuel poverty", "2024 data", "Annual source series; model features refresh when rebuilt", "2024 in the bundled features") }}
+        {{ data_item("Gas-grid disconnection", "Annual data for 2015–2024", "Annual source series; latest bundled feature year is 2024", "2015") }}
+        {{ data_item("LSOA boundaries and geography lookup", "2021 boundaries and ONS 2011-to-2021 crosswalk", "Static geography reference; updated when ONS geography changes", "2021 boundaries; crosswalk begins with 2011 LSOAs") }}
+      </ul>
     </details>
 
   </aside>

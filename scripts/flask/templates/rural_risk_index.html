@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_map_data_item.html" import data_item %}
 
 {% block title %}Rural Risk Index | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
@@ -83,6 +84,27 @@
         <li><a href="https://www.ons.gov.uk/datasets/TS052/editions/2021/versions/5" target="_blank" rel="noopener noreferrer">ONS Census 2021: Occupancy Rating for Bedrooms (Table TS052)</a></li>
         <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/patients-registered-at-a-gp-practice/july-2026" target="_blank" rel="noopener noreferrer">NHS Digital: Patients Registered at a GP Practice (July 2026)</a></li>
         <li><a href="https://stat-xplore.dwp.gov.uk/" target="_blank" rel="noopener noreferrer">DWP Stat-Xplore</a> - DLA/PIP mental-health and learning-difficulty claimant snapshots data.</li>
+      </ul>
+    </details>
+
+    <details class="control">
+      <summary><strong>Data used on this map</strong></summary>
+      <p class="muted" style="margin:.5rem 0 0; font-size:.76rem;">These are bundled snapshots, not live feeds. The dashboard is refreshed when a new source vintage is added.</p>
+      <ul class="map-data-list">
+        {{ data_item("Rural/Urban Classification", "2021 LSOA classification", "Classification snapshot; no annual refresh", "2021") }}
+        {{ data_item("GP journey times", "2019 DfT tables", "DfT release schedule varies; the dashboard currently loads the 2019 tables", "2019 in this dashboard") }}
+        {{ data_item("Car or van availability (Census TS045)", "2021 Census", "Census snapshot; no annual refresh", "2021") }}
+        {{ data_item("English Indices of Deprivation", "IMD 2025", "Periodic release; next release timing is not stated in the project data", "2025 in this dashboard") }}
+        {{ data_item("LSOA geodemographic classification", "UK LSOAC 2021/2", "Classification snapshot; refreshed when a new classification is released", "2021 Census classification") }}
+        {{ data_item("Household composition (Census TS003)", "2021 Census", "Census snapshot; no annual refresh", "2021") }}
+        {{ data_item("Fuel poverty", "2024 data (published in 2026)", "Annual source series; map refreshed when a new vintage is added", "2024 in this dashboard") }}
+        {{ data_item("Properties not connected to the gas network", "Annual values 2015–2024; map uses 2024", "Annual source series; latest bundled year is 2024", "2015 in the bundled series") }}
+        {{ data_item("Housing tenure (Census TS054)", "2021 Census", "Census snapshot; no annual refresh", "2021") }}
+        {{ data_item("Bedroom occupancy (Census TS052)", "2021 Census", "Census snapshot; no annual refresh", "2021") }}
+        {{ data_item("DWP DLA/PIP claimant indicators", "August snapshots for 2023, 2024 and 2025; default is 2025", "The bundled map snapshots are annual; no future refresh schedule is recorded", "2023 in this map (source files include DLA from 2018 and PIP from 2019)") }}
+        {{ data_item("ONS small-area population estimates", "Mid-2024", "Annual ONS estimates; dashboard refresh follows source release", "Mid-2024 in this dashboard") }}
+        {{ data_item("GP patient registrations", "July 2026", "Quarterly (January, April, July, October)", "July 2026 in this dashboard") }}
+        {{ data_item("LSOA boundaries", "2021 LSOAs", "Static geography reference; updated when ONS geography changes", "2021") }}
       </ul>
     </details>
 

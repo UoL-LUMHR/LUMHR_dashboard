@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_map_data_item.html" import data_item %}
 
 {% block title %}SAMHI | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
@@ -40,6 +41,18 @@
         <li><a href="https://pldr.org/dataset/small-area-mental-health-index-samhi-2noyv" target="_blank" rel="noopener noreferrer">Small Area Mental Health Index (SAMHI, PLDR)</a></li>
         <li><a href="https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates" target="_blank" rel="noopener noreferrer">LSOA Mid-Year Population Estimates (Mid-2024 SAPE, ONS)</a></li>
         <li><a href="https://digital.nhs.uk/data-and-information/publications/statistical/patients-registered-at-a-gp-practice/july-2026" target="_blank" rel="noopener noreferrer">GP Patient Registration (NHS Digital)</a></li>
+      </ul>
+    </details>
+
+    <details class="control">
+      <summary><strong>Data used on this map</strong></summary>
+      <p class="muted" style="margin:.5rem 0 0; font-size:.76rem;">These are bundled snapshots, not live feeds. The dashboard is refreshed when a new source vintage is added.</p>
+      <ul class="map-data-list">
+        {{ data_item("Official SAMHI index and deciles", "Annual values for 2011–2022", "Annual historical series; future publication cadence is not stated in the project data", "2011") }}
+        {{ data_item("ONS small-area population estimates", "Mid-2024", "Annual ONS estimates; dashboard refresh follows source release", "Mid-2024 in this dashboard") }}
+        {{ data_item("GP patient registrations", "July 2026", "Quarterly (January, April, July, October)", "July 2026 in this dashboard") }}
+        {{ data_item("Rural/Urban Classification", "2021 LSOA classification", "Classification snapshot; no annual refresh", "2021") }}
+        {{ data_item("LSOA boundaries and geography lookup", "2021 boundaries and ONS 2011-to-2021 crosswalk", "Static geography reference; updated when ONS geography changes", "2021 boundaries; crosswalk begins with 2011 LSOAs") }}
       </ul>
     </details>
 

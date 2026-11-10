@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_map_data_item.html" import data_item %}
 
 {% block title %}Public SAMHI-3 Proxy | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
@@ -78,6 +79,20 @@
         <li><a href="https://digital.nhs.uk/data-and-information/data-tools-and-services/data-services/general-practice-data-for-planning-and-research" target="_blank" rel="noopener">NHS England QOF</a> depression prevalence allocated to LSOAs using the register/population crosswalk.</li>
         <li><a href="https://stat-xplore.dwp.gov.uk/" target="_blank" rel="noopener">DWP Stat-Xplore</a> DLA and PIP claims for mental-health/learning-difficulty reasons.</li>
         <li><a href="https://pldr.org/dataset/small-area-mental-health-index-samhi-2noyv" target="_blank" rel="noopener">PLDR SAMHI</a> SAMHI benchmark for 2011-2022 where available.</li>
+      </ul>
+    </details>
+
+    <details class="control">
+      <summary><strong>Data used on this map</strong></summary>
+      <p class="muted" style="margin:.5rem 0 0; font-size:.76rem;">The proxy and forecasts are bundled model outputs, not live feeds. Source files and model outputs are refreshed when new data are added and the pipeline is rerun.</p>
+      <ul class="map-data-list">
+        {{ data_item("Antidepressant prescribing component", "Annual component values shown from 2011 through 2025", "OpenPrescribing source data are monthly; model output is regenerated from the selected vintages", "2011 in the map") }}
+        {{ data_item("QOF depression component", "Historical annual data; 2024 proxy uses the documented carried-forward 2022/23 value", "Annual QOF release; dashboard refresh follows the next usable release", "2011 in the map") }}
+        {{ data_item("DWP DLA/PIP components", "August snapshots for 2023, 2024 and 2025", "Annual snapshots in the bundled model input; future refresh schedule is not recorded", "2023 in this map (source files include DLA from 2018 and PIP from 2019)") }}
+        {{ data_item("Public SAMHI-3 proxy output", "2011–2025 component-based values; 2026–2027 are projections", "Annual series; output refreshes when the research pipeline is rerun", "2011") }}
+        {{ data_item("Official SAMHI comparison", "Annual benchmark values for 2011–2022", "Annual historical series; future publication cadence is not stated in the project data", "2011") }}
+        {{ data_item("Forecast model results", "Rolling validation from 2017; forecasts through 2027", "Refreshed when the forecasting pipeline is rerun; 2026–2027 are projections", "2017 for displayed validation forecasts") }}
+        {{ data_item("LSOA boundaries and geography lookup", "2021 boundaries and ONS 2011-to-2021 crosswalk", "Static geography reference; updated when ONS geography changes", "2021 boundaries; crosswalk begins with 2011 LSOAs") }}
       </ul>
     </details>
 
