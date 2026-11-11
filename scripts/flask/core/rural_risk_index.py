@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .common import minmax_scale
+from .common import minmax_scale, normalize_weight_values
 
 RURAL_RISK_WEIGHT_KEYS = [
     "rural_weight",
@@ -99,16 +99,7 @@ LSOAC_SUBGROUP_RISK_MAP: dict[str, float] = {
 
 
 def normalize_rural_risk_weights(weight_values: dict[str, float]) -> dict[str, float]:
-    values = np.array([float(weight_values.get(k, 0.0)) for k in RURAL_RISK_WEIGHT_KEYS], dtype=float)
-    values = np.clip(values, a_min=0.0, a_max=None)
-    if values.max() > np.finfo(float).max / len(values):
-        values = values / values.max()
-    total = float(values.sum())
-    if np.isclose(total, 0.0):
-        equal = 1.0 / len(RURAL_RISK_WEIGHT_KEYS)
-        return {k: equal for k in RURAL_RISK_WEIGHT_KEYS}
-    values = values / total
-    return {k: float(v) for k, v in zip(RURAL_RISK_WEIGHT_KEYS, values)}
+    return normalize_weight_values(weight_values, RURAL_RISK_WEIGHT_KEYS)
 
 
 def apply_rural_risk_index(

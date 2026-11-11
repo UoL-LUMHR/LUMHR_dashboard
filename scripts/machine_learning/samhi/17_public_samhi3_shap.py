@@ -3,25 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import shap
 
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def import_module(path: Path, name: str):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from _shared import import_module, project_root
 
 
 FEATURE_INFO = {

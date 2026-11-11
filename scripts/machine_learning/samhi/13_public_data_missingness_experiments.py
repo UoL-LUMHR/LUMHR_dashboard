@@ -10,7 +10,6 @@ scenarios are also evaluated on the Lincolnshire spatial CAR-style pilot.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import logging
 from pathlib import Path
 
@@ -22,6 +21,8 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from _shared import import_module, project_root
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 LOGGER = logging.getLogger("SAMHI_Public_Missingness")
 
@@ -30,19 +31,6 @@ INDICATOR_COLUMNS = {
     "dwp": "dla_pip_calibrated",
     "antidepressant": "antidep_rate",
 }
-
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def import_module(path: Path, name: str):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def prepare_panel(root: Path) -> tuple[pd.DataFrame, object, object]:

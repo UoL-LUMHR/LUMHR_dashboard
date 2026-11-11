@@ -3,23 +3,14 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .common import minmax_scale
+from .common import minmax_scale, normalize_weight_values
 
 
 WEIGHT_KEYS = ["dep_weight", "smi_weight", "prescribing_weight", "samhi_weight", "dla_weight", "pip_weight"]
 
 
 def normalize_weights(weight_values: dict[str, float]) -> dict[str, float]:
-    values = np.array([float(weight_values.get(k, 0.0)) for k in WEIGHT_KEYS], dtype=float)
-    values = np.clip(values, a_min=0.0, a_max=None)
-    if values.max() > np.finfo(float).max / len(values):
-        values = values / values.max()
-    total = float(values.sum())
-    if np.isclose(total, 0.0):
-        equal = 1.0 / len(WEIGHT_KEYS)
-        return {k: equal for k in WEIGHT_KEYS}
-    values = values / total
-    return {k: float(v) for k, v in zip(WEIGHT_KEYS, values)}
+    return normalize_weight_values(weight_values, WEIGHT_KEYS)
 
 
 def apply_need_index(

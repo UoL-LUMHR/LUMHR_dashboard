@@ -20,12 +20,10 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+from _shared import project_root
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 LOGGER = logging.getLogger("SAMHI_Public_Model_Comparison")
-
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
 
 
 def load_helpers(root: Path):

@@ -13,8 +13,16 @@ from __future__ import annotations
 import json
 import argparse
 from pathlib import Path
+import sys
 
 import pandas as pd
+
+
+SHARED_MODULES_DIR = Path(__file__).resolve().parents[1] / "shared"
+if str(SHARED_MODULES_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_MODULES_DIR))
+
+from lumhr_common import normalize_postcode as _normalize_postcode  # noqa: E402
 
 
 SCOPES = {
@@ -80,10 +88,6 @@ def _boundary_codes(path: Path) -> list[str]:
         if code:
             codes.append(str(code).strip())
     return codes
-
-
-def _normalize_postcode(value: object) -> str:
-    return "".join(str(value or "").upper().split())
 
 
 def _load_ods_gp_practices(root: Path) -> pd.DataFrame:

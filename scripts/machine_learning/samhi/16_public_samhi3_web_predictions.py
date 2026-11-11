@@ -3,25 +3,11 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from importlib.util import module_from_spec, spec_from_file_location
-
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def load_module(path: Path, name: str):
-    spec = spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(path)
-    module = module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from _shared import import_module as load_module, project_root
 
 
 def main() -> None:

@@ -38,6 +38,8 @@ import xgboost as xgb
 import catboost as cb
 from interpret.glassbox import ExplainableBoostingRegressor
 
+from _shared import project_root as get_project_root
+
 # Reuse the dashboard's tested practice-to-LSOA QOF allocation functions.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "flask"))
 from core.allocation import (  # noqa: E402
@@ -82,11 +84,6 @@ ISOLATION_SCALE_MAP = {
     "Rural town and fringe": 5,
     "Rural village and dispersed": 6,
 }
-
-
-def get_project_root() -> Path:
-    current = Path(__file__).resolve()
-    return current.parents[3]
 
 
 def load_all_datasets(project_root: Path) -> Dict[str, pd.DataFrame]:

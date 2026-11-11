@@ -22,16 +22,10 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
+from _shared import normalise_lsoa_code as normalise_code, project_root
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 LOGGER = logging.getLogger("SAMHI_Component_Reconstruction")
-
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def normalise_code(value: object) -> str:
-    return str(value).split(":", 1)[0].strip()
 
 
 def load_antidepressants(source_root: Path) -> pd.DataFrame:

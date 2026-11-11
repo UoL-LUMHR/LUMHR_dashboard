@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import logging
 from pathlib import Path
 
@@ -11,29 +10,10 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+from _shared import import_module, normal_crps as crps_normal, project_root as root_path
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 LOGGER = logging.getLogger("SAMHI_Public_Spatial_Bayesian")
-
-
-def root_path() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def import_module(path: Path, name: str):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def crps_normal(actual: np.ndarray, mean: np.ndarray, sd: np.ndarray) -> float:
-    from scipy.stats import norm
-
-    sd = np.maximum(np.asarray(sd, dtype=float), 1e-6)
-    z = (np.asarray(actual) - np.asarray(mean)) / sd
-    return float(np.mean(sd * (z * (2 * norm.cdf(z) - 1) + 2 * norm.pdf(z) - 1 / np.sqrt(np.pi))))
 
 
 def load_panel(root: Path):

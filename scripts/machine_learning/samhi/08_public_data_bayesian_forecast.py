@@ -14,7 +14,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import BayesianRidge
@@ -22,18 +21,10 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from _shared import normal_crps, project_root
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 LOGGER = logging.getLogger("SAMHI_Public_Bayesian")
-
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def normal_crps(y: np.ndarray, mean: np.ndarray, sd: np.ndarray) -> float:
-    sd = np.maximum(np.asarray(sd, dtype=float), 1e-6)
-    z = (np.asarray(y, dtype=float) - np.asarray(mean, dtype=float)) / sd
-    return float(np.mean(sd * (z * (2 * norm.cdf(z) - 1) + 2 * norm.pdf(z) - 1 / np.sqrt(np.pi))))
 
 
 def load_panel(root: Path) -> pd.DataFrame:

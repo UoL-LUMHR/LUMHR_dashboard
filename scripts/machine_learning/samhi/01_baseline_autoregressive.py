@@ -34,6 +34,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import lightgbm as lgb
 
+from _shared import project_root as get_project_root
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -52,13 +54,6 @@ LINCOLNSHIRE_LADS = {
     "South Kesteven",
     "West Lindsey"
 }
-
-
-def get_project_root() -> Path:
-    """Resolve the project root directory assuming this script is in scripts/machine_learning/samhi."""
-    current = Path(__file__).resolve()
-    # Go up 3 levels: samhi -> machine_learning -> scripts -> LUMHR_dashboard
-    return current.parents[3]
 
 
 def load_raw_data(project_root: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:

@@ -98,6 +98,21 @@ LSOA_METRICS = BUNDLE["lsoa_metrics"].copy()
 # SAMHI components, but are available as separately weighted inputs to the
 # current-data Need, Rural Risk, and Access Gap calculations.
 DWP_AVAILABLE_YEARS = (2023, 2024, 2025)
+POPULATION_REGISTRATION_COLUMNS = (
+    "RUC21NM",
+    "Urban_rural_flag",
+    "ONS_Pop_Total_2024",
+    "ONS_Pop_18plus",
+    "ONS_Pop_65plus",
+    "ONS_Pop_0to17",
+    "Pct_18plus",
+    "Pct_65plus",
+    "Pct_0to17",
+    "GP_Registered_Patients",
+    "GP_Registration_Rate_Pct",
+    "Registration_Gap_Est",
+    "List_Inflation_Est",
+)
 
 
 def _read_public_dwp_august_counts(base_dir: Path) -> pd.DataFrame:
@@ -482,6 +497,51 @@ def _text_or_none(value: object) -> str | None:
     return text or None
 
 
+def _area_classification_details(row: dict[str, object]) -> dict[str, object]:
+    """Build the classification fields shared by LSOA API responses."""
+    ruc_text = str(row.get("RUC21NM", "") or "")
+    flag_text = str(
+        row.get("Urban_rural_flag", "")
+        or ("Rural" if "rural" in ruc_text.lower() else "Urban")
+    )
+    return {
+        "ruc21nm": ruc_text,
+        "urban_rural_flag": flag_text,
+        "is_rural": "rural" in ruc_text.lower(),
+    }
+
+
+def _population_registration_details(row: dict[str, object]) -> dict[str, object]:
+    """Build population and registration fields shared by LSOA responses."""
+    return {
+        "ons_pop_total": _num_or_none(row.get("ONS_Pop_Total_2024")),
+        "ons_pop_18plus": _num_or_none(row.get("ONS_Pop_18plus")),
+        "ons_pop_65plus": _num_or_none(row.get("ONS_Pop_65plus")),
+        "ons_pop_0to17": _num_or_none(row.get("ONS_Pop_0to17")),
+        "pct_18plus": _num_or_none(row.get("Pct_18plus")),
+        "pct_65plus": _num_or_none(row.get("Pct_65plus")),
+        "pct_0to17": _num_or_none(row.get("Pct_0to17")),
+        "gp_registered_patients": _num_or_none(row.get("GP_Registered_Patients")),
+        "gp_registration_rate_pct": _num_or_none(row.get("GP_Registration_Rate_Pct")),
+        "registration_gap_est": _num_or_none(row.get("Registration_Gap_Est")),
+        "list_inflation_est": _num_or_none(row.get("List_Inflation_Est")),
+    }
+
+
+def _dwp_details(row: dict[str, object]) -> dict[str, object]:
+    """Build DWP fields shared by Need, Access Gap, and Rural Risk responses."""
+    return {
+        "dwp_dla_rate_pct": _num_or_none(row.get("dwp_dla_rate_pct")),
+        "dwp_pip_rate_pct": _num_or_none(row.get("dwp_pip_rate_pct")),
+        "dwp_dla_count": _num_or_none(row.get("dwp_dla_count")),
+        "dwp_pip_count": _num_or_none(row.get("dwp_pip_count")),
+        "dwp_dla_source_status": _text_or_none(row.get("dwp_dla_source_status")),
+        "dwp_pip_source_status": _text_or_none(row.get("dwp_pip_source_status")),
+        "dwp_population_source_year": _num_or_none(row.get("dwp_population_source_year")),
+        "dwp_source": _text_or_none(row.get("dla_pip_source")),
+    }
+
+
 def _json_safe(value: object) -> object:
     """Convert pandas/numpy missing values to JSON ``null`` recursively."""
     if isinstance(value, dict):
@@ -774,8 +834,6 @@ def need_scores_api():
         code = str(row.get("LSOA_CODE", "") or "")
         if not code:
             continue
-        ruc_text = str(row.get("RUC21NM", "") or "")
-        flag_text = str(row.get("Urban_rural_flag", "") or ("Rural" if "rural" in ruc_text.lower() else "Urban"))
         lsoa_details[code] = {
             "lsoa_name": str(row.get(lsoa_name_col, "") or "") if lsoa_name_col else "",
             "need_index": _num_or_none(row.get("Need_Index")),
@@ -793,30 +851,11 @@ def need_scores_api():
                 if pd.notna(row.get("Public_SAMHI3_Partial"))
                 else False
             ),
-            "ruc21nm": ruc_text,
-            "urban_rural_flag": flag_text,
-            "is_rural": "rural" in ruc_text.lower(),
-            "ons_pop_total": _num_or_none(row.get("ONS_Pop_Total_2024")),
-            "ons_pop_18plus": _num_or_none(row.get("ONS_Pop_18plus")),
-            "ons_pop_65plus": _num_or_none(row.get("ONS_Pop_65plus")),
-            "ons_pop_0to17": _num_or_none(row.get("ONS_Pop_0to17")),
-            "pct_18plus": _num_or_none(row.get("Pct_18plus")),
-            "pct_65plus": _num_or_none(row.get("Pct_65plus")),
-            "pct_0to17": _num_or_none(row.get("Pct_0to17")),
-            "gp_registered_patients": _num_or_none(row.get("GP_Registered_Patients")),
-            "gp_registration_rate_pct": _num_or_none(row.get("GP_Registration_Rate_Pct")),
-            "registration_gap_est": _num_or_none(row.get("Registration_Gap_Est")),
-            "list_inflation_est": _num_or_none(row.get("List_Inflation_Est")),
+            **_area_classification_details(row),
+            **_population_registration_details(row),
             "parkfields_jan_2026_patients": _num_or_none(row.get("Parkfields_Jan_2026_Patients")),
             "parkfields_july_2026_patients": _num_or_none(row.get("Parkfields_July_2026_Patients")),
-            "dwp_dla_rate_pct": _num_or_none(row.get("dwp_dla_rate_pct")),
-            "dwp_pip_rate_pct": _num_or_none(row.get("dwp_pip_rate_pct")),
-            "dwp_dla_source_status": _text_or_none(row.get("dwp_dla_source_status")),
-            "dwp_pip_source_status": _text_or_none(row.get("dwp_pip_source_status")),
-            "dwp_dla_count": _num_or_none(row.get("dwp_dla_count")),
-            "dwp_pip_count": _num_or_none(row.get("dwp_pip_count")),
-            "dwp_population_source_year": _num_or_none(row.get("dwp_population_source_year")),
-            "dwp_source": _text_or_none(row.get("dla_pip_source")),
+            **_dwp_details(row),
         }
 
     return jsonify(
@@ -1156,8 +1195,6 @@ def access_scores_api():
         code = str(row.get("LSOA_CODE", "") or "")
         if not code:
             continue
-        ruc_text = str(row.get("RUC21NM", "") or "")
-        flag_text = str(row.get("Urban_rural_flag", "") or ("Rural" if "rural" in ruc_text.lower() else "Urban"))
         lsoa_details[code] = {
             "lsoa_name": str(row.get(lsoa_name_col, "") or "") if lsoa_name_col else "",
             "access_index": _num_or_none(row.get("Access_Index")),
@@ -1171,9 +1208,7 @@ def access_scores_api():
             "hosp_pt_time": _num_or_none(row.get("Hosp_PT_Time")),
             "hosp_car_time": _num_or_none(row.get("Hosp_Car_Time")),
             "rural_access": _num_or_none(row.get("Rural_Access")),
-            "ruc21nm": ruc_text,
-            "urban_rural_flag": flag_text,
-            "is_rural": "rural" in ruc_text.lower(),
+            **_area_classification_details(row),
             "car_access": _num_or_none(row.get("Car_Access")),
             "car_access_pct": _num_or_none(row.get("Car_Access_Pct")),
             "no_cars_pct": _num_or_none(row.get("No_Cars_Pct")),
@@ -1189,17 +1224,7 @@ def access_scores_api():
             "avg_download_speed_mbps": _num_or_none(row.get("Avg_Download_Speed_Mbps")),
             "no_superfast_broadband_pct": _num_or_none(row.get("No_Superfast_Broadband_Pct")),
             "slow_connections_pct": _num_or_none(row.get("Slow_Connections_Pct")),
-            "ons_pop_total": _num_or_none(row.get("ONS_Pop_Total_2024")),
-            "ons_pop_18plus": _num_or_none(row.get("ONS_Pop_18plus")),
-            "ons_pop_65plus": _num_or_none(row.get("ONS_Pop_65plus")),
-            "ons_pop_0to17": _num_or_none(row.get("ONS_Pop_0to17")),
-            "pct_18plus": _num_or_none(row.get("Pct_18plus")),
-            "pct_65plus": _num_or_none(row.get("Pct_65plus")),
-            "pct_0to17": _num_or_none(row.get("Pct_0to17")),
-            "gp_registered_patients": _num_or_none(row.get("GP_Registered_Patients")),
-            "gp_registration_rate_pct": _num_or_none(row.get("GP_Registration_Rate_Pct")),
-            "registration_gap_est": _num_or_none(row.get("Registration_Gap_Est")),
-            "list_inflation_est": _num_or_none(row.get("List_Inflation_Est")),
+            **_population_registration_details(row),
         }
 
     return jsonify(
@@ -1346,8 +1371,6 @@ def access_gap_scores_api():
         code = str(row.get("LSOA_CODE", "") or "")
         if not code:
             continue
-        ruc_text = str(row.get("RUC21NM", "") or "")
-        flag_text = str(row.get("Urban_rural_flag", "") or ("Rural" if "rural" in ruc_text.lower() else "Urban"))
         lsoa_details[code] = {
             "lsoa_name": str(row.get(lsoa_name_col, "") or "") if lsoa_name_col else "",
             "access_gap_index": _num_or_none(row.get("Access_Gap_Index")),
@@ -1372,28 +1395,9 @@ def access_gap_scores_api():
             "rural_access": _num_or_none(row.get("Rural_Access")),
             "car_access": _num_or_none(row.get("Car_Access")),
             "digital_access": _num_or_none(row.get("Digital_Access")),
-            "dwp_dla_count": _num_or_none(row.get("dwp_dla_count")),
-            "dwp_pip_count": _num_or_none(row.get("dwp_pip_count")),
-            "dwp_dla_rate_pct": _num_or_none(row.get("dwp_dla_rate_pct")),
-            "dwp_pip_rate_pct": _num_or_none(row.get("dwp_pip_rate_pct")),
-            "dwp_dla_source_status": _text_or_none(row.get("dwp_dla_source_status")),
-            "dwp_pip_source_status": _text_or_none(row.get("dwp_pip_source_status")),
-            "dwp_population_source_year": _num_or_none(row.get("dwp_population_source_year")),
-            "dwp_source": _text_or_none(row.get("dla_pip_source")),
-            "ruc21nm": ruc_text,
-            "urban_rural_flag": flag_text,
-            "is_rural": "rural" in ruc_text.lower(),
-            "ons_pop_total": _num_or_none(row.get("ONS_Pop_Total_2024")),
-            "ons_pop_18plus": _num_or_none(row.get("ONS_Pop_18plus")),
-            "ons_pop_65plus": _num_or_none(row.get("ONS_Pop_65plus")),
-            "ons_pop_0to17": _num_or_none(row.get("ONS_Pop_0to17")),
-            "pct_18plus": _num_or_none(row.get("Pct_18plus")),
-            "pct_65plus": _num_or_none(row.get("Pct_65plus")),
-            "pct_0to17": _num_or_none(row.get("Pct_0to17")),
-            "gp_registered_patients": _num_or_none(row.get("GP_Registered_Patients")),
-            "gp_registration_rate_pct": _num_or_none(row.get("GP_Registration_Rate_Pct")),
-            "registration_gap_est": _num_or_none(row.get("Registration_Gap_Est")),
-            "list_inflation_est": _num_or_none(row.get("List_Inflation_Est")),
+            **_dwp_details(row),
+            **_area_classification_details(row),
+            **_population_registration_details(row),
         }
 
     return jsonify(
@@ -1699,22 +1703,11 @@ def samhi_scores_api():
         cols = ["LSOA_CODE", selected_col]
         if lsoa_name_col:
             cols.insert(1, lsoa_name_col)
-        pop_cols = [
-            "RUC21NM",
-            "Urban_rural_flag",
-            "ONS_Pop_Total_2024",
-            "ONS_Pop_18plus",
-            "ONS_Pop_65plus",
-            "ONS_Pop_0to17",
-            "Pct_18plus",
-            "Pct_65plus",
-            "Pct_0to17",
-            "GP_Registered_Patients",
-            "GP_Registration_Rate_Pct",
-            "Registration_Gap_Est",
-            "List_Inflation_Est",
-        ]
-        cols.extend([c for c in pop_cols if c in scope_metrics.columns])
+        cols.extend(
+            column
+            for column in POPULATION_REGISTRATION_COLUMNS
+            if column in scope_metrics.columns
+        )
         out_df = scope_metrics[cols].copy()
         out_df = out_df.rename(columns={selected_col: "score"})
 
@@ -1723,25 +1716,11 @@ def samhi_scores_api():
             code = str(row.get("LSOA_CODE", "") or "")
             if not code:
                 continue
-            ruc_text = str(row.get("RUC21NM", "") or "")
-            flag_text = str(row.get("Urban_rural_flag", "") or ("Rural" if "rural" in ruc_text.lower() else "Urban"))
             details[code] = {
                 "lsoa_name": str(row.get(lsoa_name_col, "") or "") if lsoa_name_col else "",
                 "value": _num_or_none(row.get("score")),
-                "ruc21nm": ruc_text,
-                "urban_rural_flag": flag_text,
-                "is_rural": "rural" in ruc_text.lower(),
-                "ons_pop_total": _num_or_none(row.get("ONS_Pop_Total_2024")),
-                "ons_pop_18plus": _num_or_none(row.get("ONS_Pop_18plus")),
-                "ons_pop_65plus": _num_or_none(row.get("ONS_Pop_65plus")),
-                "ons_pop_0to17": _num_or_none(row.get("ONS_Pop_0to17")),
-                "pct_18plus": _num_or_none(row.get("Pct_18plus")),
-                "pct_65plus": _num_or_none(row.get("Pct_65plus")),
-                "pct_0to17": _num_or_none(row.get("Pct_0to17")),
-                "gp_registered_patients": _num_or_none(row.get("GP_Registered_Patients")),
-                "gp_registration_rate_pct": _num_or_none(row.get("GP_Registration_Rate_Pct")),
-                "registration_gap_est": _num_or_none(row.get("Registration_Gap_Est")),
-                "list_inflation_est": _num_or_none(row.get("List_Inflation_Est")),
+                **_area_classification_details(row),
+                **_population_registration_details(row),
             }
 
         return jsonify(
@@ -1769,22 +1748,11 @@ def samhi_scores_api():
     cols = ["LSOA_CODE", from_col, to_col]
     if lsoa_name_col:
         cols.insert(1, lsoa_name_col)
-    pop_cols = [
-        "RUC21NM",
-        "Urban_rural_flag",
-        "ONS_Pop_Total_2024",
-        "ONS_Pop_18plus",
-        "ONS_Pop_65plus",
-        "ONS_Pop_0to17",
-        "Pct_18plus",
-        "Pct_65plus",
-        "Pct_0to17",
-        "GP_Registered_Patients",
-        "GP_Registration_Rate_Pct",
-        "Registration_Gap_Est",
-        "List_Inflation_Est",
-    ]
-    cols.extend([c for c in pop_cols if c in scope_metrics.columns])
+    cols.extend(
+        column
+        for column in POPULATION_REGISTRATION_COLUMNS
+        if column in scope_metrics.columns
+    )
     out_df = scope_metrics[cols].copy()
     out_df["from_value"] = pd.to_numeric(out_df[from_col], errors="coerce")
     out_df["to_value"] = pd.to_numeric(out_df[to_col], errors="coerce")
@@ -1795,27 +1763,13 @@ def samhi_scores_api():
         code = str(row.get("LSOA_CODE", "") or "")
         if not code:
             continue
-        ruc_text = str(row.get("RUC21NM", "") or "")
-        flag_text = str(row.get("Urban_rural_flag", "") or ("Rural" if "rural" in ruc_text.lower() else "Urban"))
         details[code] = {
             "lsoa_name": str(row.get(lsoa_name_col, "") or "") if lsoa_name_col else "",
             "from_value": _num_or_none(row.get("from_value")),
             "to_value": _num_or_none(row.get("to_value")),
             "change": _num_or_none(row.get("score")),
-            "ruc21nm": ruc_text,
-            "urban_rural_flag": flag_text,
-            "is_rural": "rural" in ruc_text.lower(),
-            "ons_pop_total": _num_or_none(row.get("ONS_Pop_Total_2024")),
-            "ons_pop_18plus": _num_or_none(row.get("ONS_Pop_18plus")),
-            "ons_pop_65plus": _num_or_none(row.get("ONS_Pop_65plus")),
-            "ons_pop_0to17": _num_or_none(row.get("ONS_Pop_0to17")),
-            "pct_18plus": _num_or_none(row.get("Pct_18plus")),
-            "pct_65plus": _num_or_none(row.get("Pct_65plus")),
-            "pct_0to17": _num_or_none(row.get("Pct_0to17")),
-            "gp_registered_patients": _num_or_none(row.get("GP_Registered_Patients")),
-            "gp_registration_rate_pct": _num_or_none(row.get("GP_Registration_Rate_Pct")),
-            "registration_gap_est": _num_or_none(row.get("Registration_Gap_Est")),
-            "list_inflation_est": _num_or_none(row.get("List_Inflation_Est")),
+            **_area_classification_details(row),
+            **_population_registration_details(row),
         }
 
     return jsonify(
@@ -1910,17 +1864,13 @@ def rural_risk_scores_api():
         code = str(row.get("LSOA_CODE", "") or "")
         if not code:
             continue
-        ruc_text = str(row.get("RUC21NM", "") or "")
-        flag_text = str(row.get("Urban_rural_flag", "") or ("Rural" if "rural" in ruc_text.lower() else "Urban"))
         lsoa_details[code] = {
             "lsoa_name": str(row.get(lsoa_name_col, "") or "") if lsoa_name_col else "",
             "rural_risk_index": _num_or_none(row.get("Rural_Risk_Index")),
             "rural_isolation_score": _num_or_none(row.get("Rural_Isolation_Normalized")),
             "lsoac_risk_score": _num_or_none(row.get("LSOAC_Risk_Normalized")),
             "imd_deprivation_score": _num_or_none(row.get("IMD_Deprivation_Normalized")),
-            "ruc21nm": ruc_text,
-            "urban_rural_flag": flag_text,
-            "is_rural": "rural" in ruc_text.lower(),
+            **_area_classification_details(row),
             "gp_pt_time": _num_or_none(row.get("GP_PT_Time")),
             "gp_car_time": _num_or_none(row.get("GP_Car_Time")),
             "no_cars_pct": _num_or_none(row.get("No_Cars_Pct")),
@@ -1956,25 +1906,8 @@ def rural_risk_scores_api():
             "overcrowded_hh_pct": _num_or_none(row.get("Overcrowded_HH_Pct")),
             "housing_tenure_vulnerability": _num_or_none(row.get("Housing_Tenure_Vulnerability_Normalized")),
             "overcrowding_risk": _num_or_none(row.get("Overcrowding_Normalized")),
-            "ons_pop_total": _num_or_none(row.get("ONS_Pop_Total_2024")),
-            "ons_pop_18plus": _num_or_none(row.get("ONS_Pop_18plus")),
-            "ons_pop_65plus": _num_or_none(row.get("ONS_Pop_65plus")),
-            "ons_pop_0to17": _num_or_none(row.get("ONS_Pop_0to17")),
-            "pct_18plus": _num_or_none(row.get("Pct_18plus")),
-            "pct_65plus": _num_or_none(row.get("Pct_65plus")),
-            "pct_0to17": _num_or_none(row.get("Pct_0to17")),
-            "gp_registered_patients": _num_or_none(row.get("GP_Registered_Patients")),
-            "gp_registration_rate_pct": _num_or_none(row.get("GP_Registration_Rate_Pct")),
-            "registration_gap_est": _num_or_none(row.get("Registration_Gap_Est")),
-            "list_inflation_est": _num_or_none(row.get("List_Inflation_Est")),
-            "dwp_dla_rate_pct": _num_or_none(row.get("dwp_dla_rate_pct")),
-            "dwp_pip_rate_pct": _num_or_none(row.get("dwp_pip_rate_pct")),
-            "dwp_dla_count": _num_or_none(row.get("dwp_dla_count")),
-            "dwp_pip_count": _num_or_none(row.get("dwp_pip_count")),
-            "dwp_dla_source_status": _text_or_none(row.get("dwp_dla_source_status")),
-            "dwp_pip_source_status": _text_or_none(row.get("dwp_pip_source_status")),
-            "dwp_population_source_year": _num_or_none(row.get("dwp_population_source_year")),
-            "dwp_source": _text_or_none(row.get("dla_pip_source")),
+            **_population_registration_details(row),
+            **_dwp_details(row),
         }
 
     return jsonify(

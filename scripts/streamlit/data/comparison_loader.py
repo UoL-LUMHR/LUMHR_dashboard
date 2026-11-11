@@ -3,21 +3,17 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from analysis.common import clean_text, find_column, find_prefix_column, normalize_code, optional_numeric, parse_numeric, safe_divide
+from analysis.common import (
+    clean_text,
+    find_column,
+    find_prefix_column,
+    normalize_code,
+    optional_numeric,
+    parse_numeric,
+    resolve_base_dir,
+    safe_divide,
+)
 from analysis.samhi import join_samhi, prepare_samhi
-
-
-def resolve_base_dir(script_file: Path) -> Path:
-    script_dir = script_file.resolve().parent
-    candidates = [script_dir, *script_dir.parents]
-    for candidate in candidates:
-        if (candidate / "datasets").exists():
-            return candidate
-    searched = "\n".join(str(candidate / "datasets") for candidate in candidates)
-    raise FileNotFoundError(
-        "Could not locate the datasets directory. Searched:\n"
-        f"{searched}"
-    )
 
 
 def get_paths(base_dir: Path) -> dict[str, Path]:

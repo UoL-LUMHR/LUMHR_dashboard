@@ -19,6 +19,8 @@ import re
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from _shared import project_root
+
 
 COLOURS = {
     "actual": "#1f2937",
@@ -28,10 +30,6 @@ COLOURS = {
     "positive": "#15803d",
     "negative": "#b91c1c",
 }
-
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
 
 
 def clean_model_name(name: str) -> str:

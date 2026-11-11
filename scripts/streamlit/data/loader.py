@@ -19,19 +19,7 @@ from analysis.allocation import (
     prepare_smi,
 )
 from analysis.samhi import join_samhi, prepare_samhi
-
-
-def resolve_base_dir(script_file: Path) -> Path:
-    script_dir = script_file.resolve().parent
-    candidates = [script_dir, *script_dir.parents]
-    for candidate in candidates:
-        if (candidate / "datasets").exists():
-            return candidate
-    searched = "\n".join(str(candidate / "datasets") for candidate in candidates)
-    raise FileNotFoundError(
-        "Could not locate the datasets directory. Searched:\n"
-        f"{searched}"
-    )
+from analysis.common import normalize_postcode as _normalise_postcode, resolve_base_dir
 
 
 def get_paths(base_dir: Path) -> dict[str, Path]:
@@ -56,10 +44,6 @@ def get_paths(base_dir: Path) -> dict[str, Path]:
         "lsoa_geo": base_dir / "datasets" / "lsoa" / "lower-super-output-areas-2021-5RrVTw.geojson",
         "samhi": base_dir / "datasets" / "samhi" / "samhi_lincolnshire_2021_lsoa.csv",
     }
-
-
-def _normalise_postcode(value: object) -> str:
-    return "".join(str(value or "").upper().split())
 
 
 def _load_ods_gp_locations(path: Path, base_dir: Path) -> pd.DataFrame:

@@ -21,20 +21,20 @@ from __future__ import annotations
 
 import argparse
 import logging
-import math
 import re
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import BayesianRidge, ElasticNet
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+from _shared import normal_crps as crps_normal, normalise_lsoa_code as _normalise_code, project_root
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 LOGGER = logging.getLogger("SAMHI_Historical_Bayesian")
@@ -49,14 +49,6 @@ HISTORICAL_FEATURES = [
     "pop_65_plus_pct", "qof_mh002_pct", "qof_mh021_pct", "qof_dep_achievement_pct",
 ]
 ALL_NUMERIC_FEATURES = HISTORY_FEATURES + HISTORICAL_FEATURES
-
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _normalise_code(value: object) -> str:
-    return str(value).split(":", 1)[0].strip()
 
 
 def _find_header(path: Path) -> Optional[Tuple[str, int, List[str]]]:
@@ -464,12 +456,6 @@ def build_panel(root: Path, scope: str = "lincolnshire") -> pd.DataFrame:
     # Imputation is fitted inside each training origin; retaining missingness
     # here prevents future-year values from entering earlier origins.
     return panel
-
-
-def crps_normal(y: np.ndarray, mean: np.ndarray, sd: np.ndarray) -> float:
-    sd = np.maximum(np.asarray(sd, dtype=float), 1e-6)
-    z = (np.asarray(y) - np.asarray(mean)) / sd
-    return float(np.mean(sd * (z * (2 * norm.cdf(z) - 1) + 2 * norm.pdf(z) - 1 / math.sqrt(math.pi))))
 
 
 def metrics(y: np.ndarray, pred: np.ndarray, lag: np.ndarray, sd: np.ndarray) -> Dict[str, float]:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 from pathlib import Path
 
 import numpy as np
@@ -14,18 +13,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-
-def root_path() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def import_module(path: Path, name: str):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from _shared import import_module, project_root as root_path
 
 
 def prepare(root: Path):

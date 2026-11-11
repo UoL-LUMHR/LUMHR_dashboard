@@ -18,7 +18,13 @@ from core.allocation import (
     prepare_prescribing,
     prepare_smi,
 )
-from core.common import find_column, normalize_code, parse_numeric
+from core.common import (
+    find_column,
+    normalize_code,
+    normalize_postcode as _normalise_postcode,
+    parse_numeric,
+    resolve_base_dir,
+)
 from core.housing import prepare_bedroom_occupancy, prepare_housing_tenure
 from core.samhi import join_samhi, prepare_samhi
 from core.travel import (
@@ -32,19 +38,6 @@ from core.travel import (
     prepare_travel_times,
     prepare_ts003_household_composition,
 )
-
-
-def resolve_base_dir(script_file: Path) -> Path:
-    script_dir = script_file.resolve().parent
-    candidates = [script_dir, *script_dir.parents]
-    for candidate in candidates:
-        if (candidate / "datasets").exists():
-            return candidate
-    searched = "\n".join(str(candidate / "datasets") for candidate in candidates)
-    raise FileNotFoundError(
-        "Could not locate the datasets directory. Searched:\n"
-        f"{searched}"
-    )
 
 
 def get_paths(base_dir: Path) -> dict[str, Path]:
@@ -131,10 +124,6 @@ def get_paths(base_dir: Path) -> dict[str, Path]:
         / "lsoa_2011_to_2021_lookup"
         / "LSOA_(2011)_to_LSOA_(2021)_to_Local_Authority_District_(2022)_Exact_Fit_Lookup_for_EW_(V3).csv",
     }
-
-
-def _normalise_postcode(value: object) -> str:
-    return "".join(str(value or "").upper().split())
 
 
 def _load_ods_gp_locations(path: Path, base_dir: Path) -> pd.DataFrame:
