@@ -141,6 +141,7 @@
   let currentScope = "lincolnshire";
   let map;
   let geojsonLayer;
+  window.lumhrTableSnapshot = () => ({ layer: geojsonLayer, data: samhiDetails, scores: currentScores, metric: `SAMHI ${samhiMeta.mode || getMode()}`, version: JSON.stringify(samhiMeta) });
   window.lumhrExportMap = () => map;
   window.lumhrExportDataBounds = () => geojsonLayer ? geojsonLayer.getBounds() : null;
 

@@ -385,6 +385,21 @@ document.addEventListener("DOMContentLoaded", () => {
     zoomControl: false,
     preferCanvas: true
   }).fitBounds(LINCOLNSHIRE_BOUNDS, { animate: false });
+  window.lumhrTableSnapshot = () => ({ layer: geojsonLayer, data: predictionsData, value: getValueForFeature, details: code => {
+    const p = predictionsData[code] || {};
+    const ci = getProjectionCI(p);
+    const result = { 'District': p.district, [isProjectionMode ? 'Projected SAMHI' : 'Predicted SAMHI']: getSelectedPrediction(p) };
+    if (isProjectionMode) {
+      result['2022 baseline'] = p.baseline_2022;
+      result['Projected decile'] = getProjectionDecile(p);
+      result['95% interval'] = ci ? `[${ci[0].toFixed(2)}, ${ci[1].toFixed(2)}]` : null;
+    } else {
+      result['Actual SAMHI'] = p.actual;
+      result['Prediction error'] = getSelectedError(p);
+    }
+    result['Change vs 2022'] = directionText(getChangeVs2022(p));
+    return result;
+  }, metric: ({pred: isProjectionMode ? "Projected SAMHI" : "Predicted SAMHI", actual: "Actual SAMHI", err: "Prediction error", change: "Change vs 2022", direction: "Change vs 2022"})[currentDisplayMode] || "Selected map value", version: `${currentDisplayMode}|${currentModel}|${currentDistrict}` });
   window.lumhrExportMap = () => map;
   window.lumhrExportDataBounds = () => geojsonLayer ? geojsonLayer.getBounds() : null;
 

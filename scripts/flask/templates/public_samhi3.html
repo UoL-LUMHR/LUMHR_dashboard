@@ -441,6 +441,21 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("insp_official").textContent=fmt(p.official_samhi);
     });
   }
+  window.lumhrTableSnapshot = () => ({ layer: state.layer, data: state.data, value: code => selectedValue(state.data[code] || {}), details: code => {
+    const p = state.data[code] || {}, previous = previousYearTrend(p);
+    const result = { 'District': p.district };
+    if (previous) result[previous.label] = num(previous.value) === null ? previous.missing : changeSummary(previous.value);
+    if (['proxy', 'forecast', 'comparison_difference'].includes(state.mode)) result[comparisonLabel()] = comparisonSummary(p);
+    result['Component-derived proxy'] = p.proxy;
+    result['Model estimate (separate from proxy)'] = p[state.model];
+    result['Forecast error'] = forecastError(p);
+    const lo = num(p.ci_lower_bayesianridge), hi = num(p.ci_upper_bayesianridge);
+    result['95% interval'] = lo === null || hi === null ? null : `${lo.toFixed(2)} to ${hi.toFixed(2)}`;
+    result['Components available'] = num(p.n_components) === null ? null : `${fmtCount(p.n_components)} of 3`;
+    result['Official SAMHI'] = p.official_samhi;
+    result['SAMHI-3 vs SAMHI difference'] = p.proxy_official_std_error;
+    return result;
+  }, metric: title(), version: `${state.mode}|${state.model}|${state.year}|${state.comparisonYear}` });
   function render() {
     const features=(state.geo||{}).features||[]; const visible=state.district==="All"?features:features.filter(f=>{const c=f.properties.LSOA21CD||f.properties.CODE||"";return state.data[c]?.district===state.district;});
     if(state.layer) map.removeLayer(state.layer); const values=Object.values(state.data).map(selectedValue).filter(v=>v!==null); if(values.length){ const min=Math.min(...values), max=Math.max(...values); if(state.mode==="error"||state.mode==="change"||state.mode==="comparison_error"||state.mode==="model_change"||state.mode==="comparison_difference"){ const limit=Math.max(Math.abs(min),Math.abs(max),0.15); state.range=[-limit,limit]; } else { state.range=[min,max]; } } else { state.range=[0,1]; } updateLegend(values);

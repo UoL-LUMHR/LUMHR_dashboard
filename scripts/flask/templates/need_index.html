@@ -183,6 +183,7 @@
 
   let map;
   let geojsonLayer;
+  window.lumhrTableSnapshot = () => ({ layer: geojsonLayer, data: lsoaDetails, scores: getActiveLayerScores(), metric: document.querySelector("#map_colorbar_title")?.textContent || currentLayerKey.replaceAll("_", " "), version: currentLayerKey });
   window.lumhrExportMap = () => map;
   window.lumhrExportDataBounds = () => geojsonLayer ? geojsonLayer.getBounds() : null;
 

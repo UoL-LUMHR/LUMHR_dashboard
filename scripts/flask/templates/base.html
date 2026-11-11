@@ -410,6 +410,28 @@
         border-color: #8ec0d4;
       }
 
+      .map-view-switch { position:absolute; z-index:1001; top:12px; left:50%; transform:translateX(-50%); display:flex; padding:3px; background:white; border:1px solid #c4d6de; border-radius:9px; box-shadow:0 2px 10px #173a4b33; }
+      .map-view-switch button { border:0; border-radius:6px; padding:8px 14px; background:transparent; color:#245166; font-weight:700; cursor:pointer; }
+      .map-view-switch button[aria-pressed="true"] { background:#12576c; color:white; }
+      .lsoa-table-panel { position:absolute; z-index:1000; inset:0; background:#f7fafb; padding:64px 20px 20px; display:flex; flex-direction:column; color:#173a4b; }
+      .lsoa-table-panel[hidden] { display:none; }
+      .lsoa-table-heading { display:flex; justify-content:space-between; align-items:end; gap:1rem; flex-wrap:wrap; }
+      .lsoa-table-heading h2 { margin:0; font-size:1.3rem; }
+      .lsoa-table-heading p { margin:.3rem 0; color:#526b78; font-size:.85rem; }
+      .lsoa-table-heading label { font-size:.8rem; font-weight:700; }
+      .lsoa-table-heading input { display:block; padding:.5rem; border:1px solid #b5cbd4; border-radius:6px; }
+      .lsoa-csv-export { padding:.55rem .9rem; border:1px solid #12576c; border-radius:6px; background:#12576c; color:white; font-weight:700; cursor:pointer; }
+      .lsoa-csv-export:hover { background:#0b4659; }
+      .lsoa-csv-export:focus-visible { outline:2px solid #12576c; outline-offset:3px; }
+      .lsoa-table-count { margin:.6rem 0; font-size:.8rem; color:#526b78; }
+      .lsoa-table-scroll { flex:1; min-height:0; overflow:auto; border:1px solid #d4e1e6; border-radius:8px; background:white; }
+      .lsoa-table-scroll table { border-collapse:separate; border-spacing:0; font-size:.82rem; width:100%; }
+      .lsoa-table-scroll th, .lsoa-table-scroll td { padding:.65rem .8rem; border-bottom:1px solid #e5edf0; text-align:left; white-space:nowrap; }
+      .lsoa-table-scroll th { position:sticky; top:0; z-index:1; background:#e8f2f5; color:#19485b; }
+      .lsoa-sort { font:inherit; font-weight:700; color:inherit; border:0; background:transparent; padding:0; cursor:pointer; text-align:left; }
+      .lsoa-sort:focus-visible { outline:2px solid #12576c; outline-offset:3px; }
+      .sort-indicator { color:#397489; margin-left:.2rem; }
+      .lsoa-table-scroll tbody tr:hover { background:#f1f8fa; }
       .map-shell {
         background: var(--panel);
         border: 1px solid var(--border);
@@ -820,6 +842,8 @@
         border-radius: 0.55rem;
         box-shadow: 0 3px 12px rgba(15,45,58,0.18);
       }
+      #lumhr_map_export_controls[hidden] { display: none; }
+
       #lumhr_map_export_controls button {
         border: 1px solid #0c7da0;
         border-radius: 0.35rem;
@@ -876,6 +900,9 @@
     {% endif %}
     {% block content %}{% endblock %}
     {% block scripts %}{% endblock %}
+    {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast', '/public_samhi3'] %}
+    <script src="{{ url_for('static', filename='map_table.js') }}"></script>
+    {% endif %}
     {% if request.path in ['/samhi', '/need_index', '/access_index', '/access_gap_index', '/rural_risk_index', '/samhi_forecast', '/public_samhi3'] %}
     <script>
       (() => {
