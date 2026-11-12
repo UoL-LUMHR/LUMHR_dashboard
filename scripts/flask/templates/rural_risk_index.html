@@ -896,10 +896,7 @@
     setupResetWeights();
 
     map = L.map("map", { preferCanvas: true });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: "&copy; OpenStreetMap contributors"
-    }).addTo(map);
+    addLumhrBasemap(map, { maxZoom: 18 });
 
     map.setView([53.1, -0.6], 8);
 

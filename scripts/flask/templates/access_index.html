@@ -749,10 +749,7 @@
       preferCanvas: true
     }).setView([53.1, -0.6], 8);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors"
-    }).addTo(map);
+    addLumhrBasemap(map, { maxZoom: 19 });
 
     addMapLegendControl();
     await Promise.all([updateMap(), loadGeoJSON()]);

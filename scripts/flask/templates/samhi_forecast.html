@@ -422,18 +422,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   L.control.zoom({ position: "topleft" }).addTo(map);
 
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 18,
-    crossOrigin: true,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  }).addTo(map);
+  addLumhrBasemap(map, { maxZoom: 18 });
 
   // Floating Legend Control
   const legendControl = L.control({ position: "topright" });
   legendControl.onAdd = function() {
     const div = L.DomUtil.create("div", "info legend");
     div.id = "map_legend";
-    div.style.background = "rgba(255,255,255,0.92)";
+    div.style.background = "#ffffff";
     div.style.padding = "8px 12px";
     div.style.borderRadius = "8px";
     div.style.border = "1px solid #c8d9e2";
