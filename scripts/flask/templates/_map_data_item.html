@@ -4,3 +4,9 @@
   <span class="map-data-meta">Map uses: {{ vintage }}<br>Source updates: {{ cadence }}<br>Earliest period shown: {{ first_period }}</span>
 </li>
 {%- endmacro %}
+
+{% macro gp_coverage_note() -%}
+<li class="map-data-item">
+  <strong>GP Registration Coverage:</strong> GP patients living in an LSOA divided by the estimated number of residents in that LSOA, multiplied by 100. It can be above 100% when the registered-patient count is higher than the estimated resident population.
+</li>
+{%- endmacro %}

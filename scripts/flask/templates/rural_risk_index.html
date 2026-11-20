@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_map_data_item.html" import data_item %}
+{% from "_map_data_item.html" import data_item, gp_coverage_note %}
 
 {% block title %}Rural Risk Index | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
@@ -91,6 +91,7 @@
       <summary><strong>Data used on this map</strong></summary>
       <p class="muted" style="margin:.5rem 0 0; font-size:.76rem;">These are bundled snapshots, not live feeds. The dashboard is refreshed when a new source vintage is added.</p>
       <ul class="map-data-list">
+        {{ gp_coverage_note() }}
         {{ data_item("Rural/Urban Classification", "2021 LSOA classification", "Classification snapshot; no annual refresh", "2021") }}
         {{ data_item("GP journey times", "2019 DfT tables", "DfT release schedule varies; the dashboard currently loads the 2019 tables", "2019 in this dashboard") }}
         {{ data_item("Car or van availability (Census TS045)", "2021 Census", "Census snapshot; no annual refresh", "2021") }}

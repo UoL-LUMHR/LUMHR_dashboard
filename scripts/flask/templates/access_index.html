@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_map_data_item.html" import data_item %}
+{% from "_map_data_item.html" import data_item, gp_coverage_note %}
 
 {% block title %}Mental Health Access Index | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
@@ -75,6 +75,7 @@
       <summary><strong>Data used on this map</strong></summary>
       <p class="muted" style="margin:.5rem 0 0; font-size:.76rem;">These are bundled snapshots, not live feeds. The dashboard is refreshed when a new source vintage is added.</p>
       <ul class="map-data-list">
+        {{ gp_coverage_note() }}
         {{ data_item("QOF mental-health and depression measures", "2024/25", "Annual release; refreshed when the next release is incorporated", "2024/25 in this dashboard") }}
         {{ data_item("GP patient registrations", "July 2026", "Quarterly (January, April, July, October)", "July 2026 in this dashboard") }}
         {{ data_item("GP practice locations (NHS ODS)", "Saved ODS practice export; its extraction date is not recorded", "ODS source data updates nightly; this local export must be replaced manually", "Not recorded in the bundled export") }}

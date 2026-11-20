@@ -7,3 +7,4 @@ scripts/machine_learning/dhsc_fingertips_data
 scripts/machine_learning/gp_prescribing_data
 scripts/machine_learning/samhi/results/
 config/
+outputs/

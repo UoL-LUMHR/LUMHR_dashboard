@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_map_data_item.html" import data_item %}
+{% from "_map_data_item.html" import data_item, gp_coverage_note %}
 
 {% block title %}Mental Health Access Gap Index | LUMHR{% endblock %}
 {% block body_class %}map-layout{% endblock %}
@@ -71,6 +71,7 @@
       <summary><strong>Data used on this map</strong></summary>
       <p class="muted" style="margin:.5rem 0 0; font-size:.76rem;">The gap combines the Need and Access inputs. These are bundled snapshots, not live feeds; the dashboard is refreshed when new source vintages are added.</p>
       <ul class="map-data-list">
+        {{ gp_coverage_note() }}
         {{ data_item("QOF depression, SMI and service measures", "2024/25", "Annual release; refreshed when the next release is incorporated", "2024/25 in this dashboard") }}
         {{ data_item("GP patient registrations", "July 2026; January 2026 for Parkfields Surgery in Derbyshire and the combined area", "Quarterly (January, April, July, October)", "January 2026 exception; July 2026 elsewhere") }}
         {{ data_item("GP practice locations (NHS ODS)", "Saved ODS practice export; its extraction date is not recorded", "ODS source data updates nightly; this local export must be replaced manually", "Not recorded in the bundled export") }}

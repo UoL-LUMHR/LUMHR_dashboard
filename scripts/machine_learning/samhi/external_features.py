@@ -72,15 +72,21 @@ def _empty_frame(columns) -> pd.DataFrame:
     return pd.DataFrame(columns=["LSOA21CD", *columns])
 
 
-def load_household_features(path: Path) -> pd.DataFrame:
-    """Return detailed TS003 household percentages for each 2021 LSOA."""
+def load_household_features(path: Path, include_weight: bool = False) -> pd.DataFrame:
+    """Return detailed TS003 household percentages for each 2021 LSOA.
+
+    When requested, also return the all-households count so percentages can be
+    combined correctly when 2021 child areas are rolled up to 2011 boundaries.
+    """
     if not path.exists():
-        return _empty_frame(HOUSEHOLD_FEATURE_COLUMNS)
+        columns = [*HOUSEHOLD_FEATURE_COLUMNS, *(["__household_weight"] if include_weight else [])]
+        return _empty_frame(columns)
 
     try:
         if "lincolnshire" in path.name.lower():
             raw = pd.read_csv(path)
             code_col = "LSOA_Code"
+            household_total_col = "Total_All_Households"
             source_columns = {
                 "one_person_household_pct": "One-person household_Pct",
                 "one_person_aged_66_plus_pct": "One-person household: Aged 66 years and over_Pct",
@@ -99,6 +105,7 @@ def load_household_features(path: Path) -> pd.DataFrame:
             # Nomis Census export: first seven rows are metadata.
             raw = pd.read_csv(path, skiprows=7)
             code_col = "2021 super output area - lower layer"
+            household_total_col = "Total: All households"
             source_columns = {
                 "one_person_household_pct": "%.1",
                 "one_person_aged_66_plus_pct": "%.2",
@@ -115,11 +122,21 @@ def load_household_features(path: Path) -> pd.DataFrame:
             }
 
         out = pd.DataFrame({"LSOA21CD": _clean_code(raw[code_col])})
+        if include_weight:
+            out["__household_weight"] = (
+                _numeric(raw[household_total_col])
+                if household_total_col in raw.columns
+                else np.nan
+            )
         for destination, source in source_columns.items():
             out[destination] = _numeric(raw[source]) if source in raw.columns else np.nan
-        return out.groupby("LSOA21CD", as_index=False)[HOUSEHOLD_FEATURE_COLUMNS].mean()
+        aggregations = {column: "mean" for column in HOUSEHOLD_FEATURE_COLUMNS}
+        if include_weight:
+            aggregations["__household_weight"] = "first"
+        return out.groupby("LSOA21CD", as_index=False).agg(aggregations)
     except Exception:
-        return _empty_frame(HOUSEHOLD_FEATURE_COLUMNS)
+        columns = [*HOUSEHOLD_FEATURE_COLUMNS, *(["__household_weight"] if include_weight else [])]
+        return _empty_frame(columns)
 
 
 def _pivot_census_categories(

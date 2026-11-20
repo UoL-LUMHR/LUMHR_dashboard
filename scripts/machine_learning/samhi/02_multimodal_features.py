@@ -62,7 +62,6 @@ from external_features import (  # noqa: E402
     load_added_features,
     load_household_features,
     lagged_gas_feature,
-    merge_added_features,
 )
 
 warnings.filterwarnings("ignore")
@@ -84,14 +83,14 @@ LINCOLNSHIRE_LADS = {
     "West Lindsey"
 }
 
-ISOLATION_SCALE_MAP = {
-    "Urban major conurbation": 1,
-    "Urban minor conurbation": 2,
-    "Urban city and town": 3,
-    "Urban with significant rural": 4,
-    "Rural town and fringe": 5,
-    "Rural village and dispersed": 6,
-}
+POPULATION_SOURCE = (
+    "scripts/utils/source_data/lsoa_population_estimates/"
+    "Mid-2022 revised (Nov 2025) to mid-2024/sapelsoasyoa20222024.xlsx"
+)
+
+# 2021 RUC codes classified as nearer to a major town/city:
+# Urban (UN1), larger rural (RLN1), and smaller rural (RSN1).
+RUC_NEARER_CODES = {"UN1", "RLN1", "RSN1"}
 
 SAMHI_HISTORY_FEATURES = {
     "lag_1", "lag_2", "lag_3",
@@ -165,11 +164,30 @@ def load_all_datasets(project_root: Path) -> Dict[str, pd.DataFrame]:
     ru_df = pd.read_csv(ru_path)
     ru_df["LSOA21CD"] = ru_df["LSOA21CD"].astype(str).str.strip()
     ru_df["is_rural"] = (ru_df["Urban_rural_flag"].astype(str).str.strip() == "Rural").astype(int)
-    ru_df["isolation_scale"] = ru_df["RUC21NM"].map(ISOLATION_SCALE_MAP).fillna(3).astype(float)
-    ru_df["isolation_normalized"] = (ru_df["isolation_scale"] - 1.0) / 5.0
+    ru_codes = ru_df["RUC21CD"].astype(str).str.strip().str.upper()
+    ru_df["ruc_nearer_population_share"] = ru_codes.isin(RUC_NEARER_CODES).astype(float)
+    known_ruc_codes = RUC_NEARER_CODES | {"UF1", "RLF1", "RSF1"}
+    unknown_ruc_codes = set(ru_codes.dropna().unique()) - known_ruc_codes
+    if unknown_ruc_codes:
+        logger.warning("Unmapped 2021 RUC codes: %s", sorted(unknown_ruc_codes))
 
-    ts003_df = load_household_features(ts003_path)
+    ts003_df = load_household_features(ts003_path, include_weight=True)
     added_features = load_added_features(datasets_dir)
+
+    population_path = project_root / POPULATION_SOURCE
+    if not population_path.exists():
+        raise FileNotFoundError(f"Required 2021-LSOA population weights not found: {population_path}")
+    population_weights = pd.read_excel(
+        population_path,
+        sheet_name="Mid-2024 LSOA 2021",
+        skiprows=3,
+        usecols=["LSOA 2021 Code", "Total"],
+        engine="openpyxl",
+    ).rename(columns={"LSOA 2021 Code": "LSOA21CD", "Total": "__population_weight"})
+    population_weights["LSOA21CD"] = population_weights["LSOA21CD"].astype(str).str.strip()
+    population_weights["__population_weight"] = pd.to_numeric(
+        population_weights["__population_weight"], errors="coerce"
+    )
 
     car_df = pd.read_csv(car_path) if car_path.exists() else pd.DataFrame()
 
@@ -221,6 +239,9 @@ def load_all_datasets(project_root: Path) -> Dict[str, pd.DataFrame]:
                     qof_access_df[col] = np.nan
             # A mapped LSOA can receive multiple practice rows; aggregate before merging.
             qof_access_df = qof_access_df.groupby("LSOA_CODE", as_index=False)[qof_cols].mean()
+            patient_weights = mapping.groupby("LSOA_CODE", as_index=False)["NUMBER_OF_PATIENTS"].sum()
+            patient_weights = patient_weights.rename(columns={"NUMBER_OF_PATIENTS": "__patient_weight"})
+            qof_access_df = qof_access_df.merge(patient_weights, on="LSOA_CODE", how="left")
             logger.info("Loaded QOF 2024-25 rates for %s unique LSOAs", len(qof_access_df))
         except Exception as exc:
             logger.warning("Could not load QOF model features: %s", exc)
@@ -231,6 +252,7 @@ def load_all_datasets(project_root: Path) -> Dict[str, pd.DataFrame]:
         "deri": deri_df,
         "rural_urban": ru_df,
         "ts003": ts003_df,
+        "population_weights": population_weights,
         "car": car_df,
         "imd25": imd25_df,
         "hosp": hosp_df,
@@ -259,13 +281,97 @@ def compute_spatial_neighbors(geojson_path: Path) -> Dict[str, List[str]]:
         return {}
 
 
-def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Build unified cross-sectional dataset incorporating the new national features."""
+def aggregate_2021_features_to_2011(
+    frame: pd.DataFrame,
+    lookup_df: pd.DataFrame,
+    feature_columns: List[str],
+    weight_col: str,
+    binary_majority_columns: Tuple[str, ...] = (),
+) -> pd.DataFrame:
+    """Roll LSOA21 feature rates up to their 2011 parent using explicit weights."""
+    output_columns = ["LSOA11CD", *feature_columns]
+    if frame.empty or not feature_columns:
+        return pd.DataFrame(columns=output_columns)
+
+    mapping = lookup_df[["LSOA11CD", "LSOA21CD"]].drop_duplicates()
+    source = frame[["LSOA21CD", *feature_columns, weight_col]].copy()
+    source = source.merge(mapping, on="LSOA21CD", how="left")
+    source[weight_col] = pd.to_numeric(source[weight_col], errors="coerce")
+    result = pd.DataFrame({"LSOA11CD": source["LSOA11CD"].dropna().drop_duplicates()})
+
+    for feature in feature_columns:
+        values = pd.to_numeric(source[feature], errors="coerce")
+        weights = source[weight_col]
+        valid = values.notna() & weights.gt(0) & source["LSOA11CD"].notna()
+        numerator = (values[valid] * weights[valid]).groupby(source.loc[valid, "LSOA11CD"]).sum()
+        denominator = weights[valid].groupby(source.loc[valid, "LSOA11CD"]).sum()
+        aggregated = numerator.div(denominator)
+        if feature in binary_majority_columns:
+            aggregated = (aggregated >= 0.5).astype(float)
+        result = result.merge(
+            aggregated.rename(feature).reset_index().rename(columns={"index": "LSOA11CD"}),
+            on="LSOA11CD",
+            how="left",
+        )
+
+    return result[output_columns]
+
+
+def aggregate_spatial_neighbors_to_2011(
+    neighbors_2021: Dict[str, List[str]], lookup_df: pd.DataFrame
+) -> Dict[str, List[str]]:
+    """Collapse child-polygon adjacency into adjacency between 2011 parent areas."""
+    pairs = lookup_df[["LSOA11CD", "LSOA21CD"]].drop_duplicates()
+    parents_per_child = pairs.groupby("LSOA21CD")["LSOA11CD"].nunique()
+    unambiguous_children = set(parents_per_child[parents_per_child.eq(1)].index)
+    child_to_parent = (
+        pairs[pairs["LSOA21CD"].isin(unambiguous_children)]
+        .drop_duplicates("LSOA21CD")
+        .set_index("LSOA21CD")["LSOA11CD"]
+        .to_dict()
+    )
+
+    parent_neighbors: Dict[str, set[str]] = {}
+    for child, child_neighbors in neighbors_2021.items():
+        parent = child_to_parent.get(child)
+        if parent is None:
+            continue
+        parent_neighbors.setdefault(parent, set())
+        for neighbor_child in child_neighbors:
+            neighbor_parent = child_to_parent.get(neighbor_child)
+            if neighbor_parent is None or neighbor_parent == parent:
+                continue
+            parent_neighbors[parent].add(neighbor_parent)
+            parent_neighbors.setdefault(neighbor_parent, set()).add(parent)
+
+    return {parent: sorted(neighbor_codes) for parent, neighbor_codes in parent_neighbors.items()}
+
+
+def first_child_spatial_neighbors_to_2011(
+    neighbors_2021: Dict[str, List[str]], lookup_df: pd.DataFrame
+) -> Dict[str, List[str]]:
+    """Reproduce the former graph that used only each 2011 area's first child."""
+    selected = lookup_df.sort_values("ObjectId").drop_duplicates("LSOA11CD")
+    selected_children = selected.set_index("LSOA21CD")["LSOA11CD"].to_dict()
+    parent_neighbors: Dict[str, set[str]] = {}
+    for child, parent in selected_children.items():
+        parent_neighbors.setdefault(parent, set())
+        for neighbor_child in neighbors_2021.get(child, []):
+            neighbor_parent = selected_children.get(neighbor_child)
+            if neighbor_parent is not None and neighbor_parent != parent:
+                parent_neighbors[parent].add(neighbor_parent)
+                parent_neighbors.setdefault(neighbor_parent, set()).add(parent)
+    return {parent: sorted(neighbor_codes) for parent, neighbor_codes in parent_neighbors.items()}
+
+
+def build_master_frame(data: Dict[str, pd.DataFrame], boundary_mode: str = "aggregate_2011") -> pd.DataFrame:
+    """Build a 2011-LSOA frame, aggregating 2021-geography inputs to parent areas."""
     samhi_df = data["samhi"]
     lookup_df = data["lookup"]
     deri_df = data["deri"]
     ru_df = data["rural_urban"]
     ts003_df = data["ts003"]
+    population_weights = data["population_weights"]
     car_df = data["car"]
     imd25_df = data["imd25"]
     hosp_df = data["hosp"]
@@ -273,15 +379,56 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     qof_access_df = data["qof_access"]
     added_features = data["added_features"]
 
-    primary_lookup = lookup_df.sort_values("ObjectId").drop_duplicates(subset=["LSOA11CD"]).copy()
+    # Model units and outcomes are LSOA11. Do not choose one arbitrary LSOA21
+    # child as the geography for the parent. Use the lookup only for stable LAD
+    # labels here; all LSOA21-only feature tables are aggregated below.
+    parent_lookup = lookup_df.sort_values("ObjectId").drop_duplicates(subset=["LSOA11CD"])
+    first_child_lookup = parent_lookup[["LSOA11CD", "LSOA21CD"]]
 
     master = samhi_df.merge(
-        primary_lookup[["LSOA11CD", "LSOA21CD", "LSOA21NM", "LAD22CD", "LAD22NM"]],
+        parent_lookup[["LSOA11CD", "LAD22CD", "LAD22NM"]],
         left_on="lsoa11",
         right_on="LSOA11CD",
         how="left"
     )
+    master.drop(columns=["LSOA11CD"], inplace=True)
     master["is_lincolnshire"] = master["LAD22NM"].isin(LINCOLNSHIRE_LADS).astype(int)
+
+    def merge_weighted_2021_features(
+        frame: pd.DataFrame,
+        feature_columns: List[str],
+        weight_col: str,
+        binary_majority_columns: Tuple[str, ...] = (),
+    ) -> None:
+        nonlocal master
+        if frame.empty:
+            for column in feature_columns:
+                master[column] = np.nan
+            return
+        if boundary_mode == "first_child":
+            selected = first_child_lookup.merge(
+                frame[["LSOA21CD", *feature_columns]].drop_duplicates("LSOA21CD"),
+                on="LSOA21CD",
+                how="left",
+            )
+            master = master.merge(
+                selected.rename(columns={"LSOA11CD": "lsoa11"}).drop(columns=["LSOA21CD"]),
+                on="lsoa11",
+                how="left",
+            )
+            return
+        aggregated = aggregate_2021_features_to_2011(
+            frame,
+            lookup_df,
+            feature_columns,
+            weight_col,
+            binary_majority_columns,
+        )
+        master = master.merge(
+            aggregated.rename(columns={"LSOA11CD": "lsoa11"}),
+            on="lsoa11",
+            how="left",
+        )
 
     # DERI features
     deri_cols = {
@@ -303,17 +450,30 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     master = master.merge(deri_sub, left_on="lsoa11", right_on="LSOA code", how="left")
     master.drop(columns=["LSOA code"], inplace=True)
 
-    # Rural-Urban & Isolation Scale
-    ru_sub = ru_df[["LSOA21CD", "is_rural", "isolation_scale", "isolation_normalized"]].drop_duplicates(subset=["LSOA21CD"])
-    master = master.merge(ru_sub, on="LSOA21CD", how="left")
+    # 2021 RUC combines settlement type with nearer/further relative access.
+    # For a split parent, retain the population share in nearer children and
+    # assign rural/urban by the population-weighted majority.
+    ru_sub = ru_df[["LSOA21CD", "is_rural", "ruc_nearer_population_share"]].drop_duplicates(subset=["LSOA21CD"])
+    ru_sub = ru_sub.merge(population_weights, on="LSOA21CD", how="left")
+    merge_weighted_2021_features(
+        ru_sub,
+        ["is_rural", "ruc_nearer_population_share"],
+        "__population_weight",
+        binary_majority_columns=("is_rural",),
+    )
     master["is_rural"] = master["is_rural"].fillna(0).astype(int)
-    master["isolation_scale"] = master["isolation_scale"].fillna(3.0).astype(float)
-    master["isolation_normalized"] = master["isolation_normalized"].fillna(0.4).astype(float)
 
-    # IMD 2025
+    # IMD is an area rank/decile, not an additive quantity. For a split parent,
+    # represent the children with a population-weighted mean of their supplied
+    # rank/decile; this is a descriptive area summary, not a recalculated IMD.
     if not imd25_df.empty:
         imd25_sub = imd25_df[["LSOA21CD", "imd_2025_rank", "imd_2025_decile"]].drop_duplicates(subset=["LSOA21CD"])
-        master = master.merge(imd25_sub, on="LSOA21CD", how="left")
+        imd25_sub = imd25_sub.merge(population_weights, on="LSOA21CD", how="left")
+        merge_weighted_2021_features(
+            imd25_sub,
+            ["imd_2025_rank", "imd_2025_decile"],
+            "__population_weight",
+        )
     else:
         master["imd_2025_rank"] = np.nan
         master["imd_2025_decile"] = np.nan
@@ -331,12 +491,21 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         master["gp_pt_time"] = np.nan
         master["gp_car_time"] = np.nan
 
-    # Detailed Census 2021 household composition.
+    # Census household rates use each child's all-households count as weight.
     if not ts003_df.empty:
-        master = master.merge(ts003_df, on="LSOA21CD", how="left")
+        merge_weighted_2021_features(
+            ts003_df,
+            HOUSEHOLD_FEATURE_COLUMNS,
+            "__household_weight",
+        )
     else:
         for col in HOUSEHOLD_FEATURE_COLUMNS:
             master[col] = np.nan
+
+    household_weights = ts003_df[["LSOA21CD", "__household_weight"]].copy() if "__household_weight" in ts003_df else pd.DataFrame()
+    if household_weights.empty:
+        logger.warning("TS003 household counts unavailable; population weights will be used for household-rate inputs")
+        household_weights = population_weights.rename(columns={"__population_weight": "__household_weight"})
 
     # Car availability
     if not car_df.empty:
@@ -344,24 +513,36 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
             car_df["code"] = car_df["Lower layer Super Output Areas Code"].astype(str).str.strip()
             car_piv = car_df.pivot(index="code", columns="Car or van availability (5 categories) Code", values="Observation").fillna(0)
             total_hh = car_piv[[0, 1, 2, 3]].sum(axis=1)
-            no_car = (car_piv[0] / total_hh * 100).rename("no_car_pct").reset_index()
-            master = master.merge(no_car, left_on="LSOA21CD", right_on="code", how="left").drop(columns=["code"])
+            no_car = pd.DataFrame({
+                "LSOA21CD": car_piv.index,
+                "no_car_pct": (car_piv[0] / total_hh * 100).values,
+                "__household_weight": total_hh.values,
+            })
+            merge_weighted_2021_features(no_car, ["no_car_pct"], "__household_weight")
         except Exception:
             master["no_car_pct"] = np.nan
     else:
         master["no_car_pct"] = np.nan
 
-    # QOF measures used by the Access maps, rolled up to LSOA.
+    # QOF rates are patient-weighted within each child LSOA, then rolled up
+    # using the registered-patient count as the parent-area denominator.
     qof_cols = ["qof_mh002_pct", "qof_mh021_pct", "qof_mh_pca_pct", "qof_dep_pca_pct", "qof_dep004_pct"]
     if not qof_access_df.empty:
-        master = master.merge(qof_access_df[["LSOA_CODE", *qof_cols]], left_on="LSOA21CD", right_on="LSOA_CODE", how="left")
-        master.drop(columns=["LSOA_CODE"], inplace=True)
+        qof_sub = qof_access_df.rename(columns={"LSOA_CODE": "LSOA21CD"})
+        merge_weighted_2021_features(qof_sub, qof_cols, "__patient_weight")
     else:
         for col in qof_cols:
             master[col] = np.nan
 
-    # Requested external housing, energy and household features.
-    master = merge_added_features(master, added_features)
+    # Fuel poverty, gas-grid, tenure and occupancy inputs are household rates.
+    # Use TS003 household counts as denominator weights where source counts are
+    # not carried with the rate table.
+    for frame in added_features.values():
+        if frame.empty:
+            continue
+        feature_columns = [column for column in frame.columns if column != "LSOA21CD"]
+        weighted_frame = frame.merge(household_weights, on="LSOA21CD", how="left")
+        merge_weighted_2021_features(weighted_frame, feature_columns, "__household_weight")
 
     # Median impute all numeric features
     all_num_covariates = [
@@ -370,7 +551,7 @@ def build_master_frame(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         "pct_no_qualifications", "pct_social_grade_de", "pension_credit_rate", "avg_download_speed",
         "one_person_household_pct", "lone_parent_pct",
         "gp_pt_time", "gp_car_time", "hosp_pt_time", "hosp_car_time",
-        "no_car_pct", "isolation_scale", "isolation_normalized",
+        "no_car_pct", "ruc_nearer_population_share",
         "qof_mh002_pct", "qof_mh021_pct", "qof_mh_pca_pct", "qof_dep_pca_pct", "qof_dep004_pct",
         *[c for c in ADDED_FEATURE_COLUMNS if c != "gas_grid_disconnection_pct"]
     ]
@@ -391,7 +572,7 @@ def create_panel_dataset(
 ) -> pd.DataFrame:
     """Construct longitudinal panel dataset with sliding lag windows, momentum, and spatial spillovers."""
     records = []
-    lsoa21_to_idx = {code: idx for idx, code in enumerate(df["LSOA21CD"].values)}
+    lsoa11_to_idx = {code: idx for idx, code in enumerate(df["lsoa11"].values)}
 
     for t in range(start_year, end_year + 1):
         target_col = f"samhi_index.{t}"
@@ -429,10 +610,10 @@ def create_panel_dataset(
         spatial_delta_1 = np.zeros(len(df))
 
         if spatial_neighbors:
-            for i, code in enumerate(df["LSOA21CD"].values):
+            for i, code in enumerate(df["lsoa11"].values):
                 nbr_codes = spatial_neighbors.get(code, [])
                 if nbr_codes:
-                    nbr_indices = [lsoa21_to_idx[c] for c in nbr_codes if c in lsoa21_to_idx]
+                    nbr_indices = [lsoa11_to_idx[c] for c in nbr_codes if c in lsoa11_to_idx]
                     if nbr_indices:
                         spatial_lag_1[i] = np.mean(l1[nbr_indices])
                         spatial_delta_1[i] = np.mean(delta1[nbr_indices])
@@ -448,8 +629,6 @@ def create_panel_dataset(
 
         year_records = pd.DataFrame({
             "lsoa11": df["lsoa11"],
-            "LSOA21CD": df["LSOA21CD"],
-            "LSOA21NM": df.get("LSOA21NM", ""),
             "LAD22NM": df["LAD22NM"],
             "is_lincolnshire": df["is_lincolnshire"],
             "year": t,
@@ -481,8 +660,7 @@ def create_panel_dataset(
             "one_person_household_pct": df["one_person_household_pct"],
             "lone_parent_pct": df["lone_parent_pct"],
             "is_rural": df["is_rural"],
-            "isolation_scale": df["isolation_scale"],
-            "isolation_normalized": df["isolation_normalized"],
+            "ruc_nearer_population_share": df["ruc_nearer_population_share"],
             "avg_download_speed": df["avg_download_speed"],
             "gp_pt_time": df["gp_pt_time"],
             "gp_car_time": df["gp_car_time"],
@@ -570,8 +748,7 @@ def compute_shap_importance(
         "spatial_lag_1": "2_Geography_Accessibility",
         "spatial_delta_1": "2_Geography_Accessibility",
         "is_rural": "2_Geography_Accessibility",
-        "isolation_scale": "2_Geography_Accessibility",
-        "isolation_normalized": "2_Geography_Accessibility",
+        "ruc_nearer_population_share": "2_Geography_Accessibility",
         "gp_pt_time": "2_Geography_Accessibility",
         "gp_car_time": "2_Geography_Accessibility",
         "hosp_pt_time": "2_Geography_Accessibility",
@@ -661,8 +838,7 @@ def compute_linear_shap_importance(
         "spatial_lag_1": "2_Geography_Accessibility",
         "spatial_delta_1": "2_Geography_Accessibility",
         "is_rural": "2_Geography_Accessibility",
-        "isolation_scale": "2_Geography_Accessibility",
-        "isolation_normalized": "2_Geography_Accessibility",
+        "ruc_nearer_population_share": "2_Geography_Accessibility",
         "gp_pt_time": "2_Geography_Accessibility",
         "gp_car_time": "2_Geography_Accessibility",
         "hosp_pt_time": "2_Geography_Accessibility",
@@ -877,7 +1053,7 @@ def run_scope_benchmark(
         sub_drift = sub_yr["lag_1"].values + sub_yr["delta_1"].values
         metrics_records.append({"Scope": scope, "Split": f"Test ({yr})", "Model": "AR Baseline (Momentum Drift)", **evaluate_predictions(sub_yr["target"].values, sub_drift, sub_yr["lag_1"].values)})
 
-    test_preds_df = test_df[["lsoa11", "LSOA21CD", "LSOA21NM", "LAD22NM", "is_lincolnshire", "year", "target", "lag_1", "delta_1", "qof_mh002_pct", "qof_mh021_pct", "qof_mh_pca_pct", "qof_dep_pca_pct", "qof_dep004_pct"]].rename(columns={"target": "actual_samhi"}).copy()
+    test_preds_df = test_df[["lsoa11", "LAD22NM", "is_lincolnshire", "year", "target", "lag_1", "delta_1", "qof_mh002_pct", "qof_mh021_pct", "qof_mh_pca_pct", "qof_dep_pca_pct", "qof_dep004_pct"]].rename(columns={"target": "actual_samhi"}).copy()
     test_preds_df["pred_ar_baseline_persistence"] = test_preds_df["lag_1"]
     test_preds_df["err_ar_baseline_persistence"] = test_preds_df["pred_ar_baseline_persistence"] - test_preds_df["actual_samhi"]
     test_preds_df["pred_ar_baseline_momentum_drift"] = test_preds_df["lag_1"] + test_preds_df["delta_1"]
@@ -955,10 +1131,9 @@ def run_scope_benchmark(
     lookup_21 = lookup_df.drop_duplicates(subset=["LSOA21CD"]).copy()
     if scope == "lincolnshire":
         lookup_21 = lookup_21[lookup_21["LAD22NM"].isin(LINCOLNSHIRE_LADS)]
-    
-    cols_to_merge = [c for c in test_preds_df.columns if c not in ["LSOA21CD", "LSOA21NM", "LAD22NM", "ObjectId"]]
+    prediction_columns = [column for column in test_preds_df.columns if column != "LAD22NM"]
     expanded_preds = lookup_21[["LSOA11CD", "LSOA21CD", "LSOA21NM", "LAD22NM"]].merge(
-        test_preds_df[cols_to_merge],
+        test_preds_df[prediction_columns],
         left_on="LSOA11CD",
         right_on="lsoa11",
         how="inner"
@@ -989,6 +1164,12 @@ def main():
     parser.add_argument("--output-dir", type=str, default="scripts/machine_learning/samhi/results")
     parser.add_argument("--history", choices=["with", "without", "both"], default="with",
                         help="Use previous-SAMHI predictors, exclude them, or run both experiments")
+    parser.add_argument(
+        "--boundary-mode",
+        choices=["aggregate_2011", "first_child"],
+        default="aggregate_2011",
+        help="Aggregate 2021 child features to 2011 parents (default), or reproduce the former first-child mapping for comparison",
+    )
     args = parser.parse_args()
 
     project_root = get_project_root()
@@ -996,8 +1177,13 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     data = load_all_datasets(project_root)
-    spatial_neighbors = compute_spatial_neighbors(data["geojson_path"])
-    master_df = build_master_frame(data)
+    spatial_neighbors_2021 = compute_spatial_neighbors(data["geojson_path"])
+    if args.boundary_mode == "first_child":
+        spatial_neighbors = first_child_spatial_neighbors_to_2011(spatial_neighbors_2021, data["lookup"])
+    else:
+        spatial_neighbors = aggregate_spatial_neighbors_to_2011(spatial_neighbors_2021, data["lookup"])
+    logger.info("Built a 2011-LSOA spatial graph from %s 2021-LSOA neighbour sets", len(spatial_neighbors_2021))
+    master_df = build_master_frame(data, boundary_mode=args.boundary_mode)
 
     panel_df = create_panel_dataset(master_df, spatial_neighbors, start_year=2014, end_year=2022)
 
@@ -1010,11 +1196,14 @@ def main():
         "imd_2019_score", "imd_2025_decile", "unemployment_rate", "pct_social_grade_de", "pension_credit_rate",
         "pct_aged_65_plus", "pct_disability_limited", "pct_no_qualifications",
         "one_person_household_pct", "lone_parent_pct",
-        "is_rural", "isolation_scale", "isolation_normalized",
+        "is_rural", "ruc_nearer_population_share",
         "avg_download_speed", "gp_pt_time", "gp_car_time", "hosp_pt_time", "hosp_car_time", "no_car_pct",
         "qof_mh002_pct", "qof_mh021_pct", "qof_mh_pca_pct", "qof_dep_pca_pct", "qof_dep004_pct",
         *ADDED_FEATURE_COLUMNS,
     ]
+    # The detailed household family also contains two fields named above;
+    # train and explain each distinct input only once.
+    feature_cols = list(dict.fromkeys(feature_cols))
     external_only_cols = [c for c in feature_cols if c not in SAMHI_HISTORY_FEATURES]
 
     scopes = ["lincolnshire", "national"] if args.scope == "both" else [args.scope]

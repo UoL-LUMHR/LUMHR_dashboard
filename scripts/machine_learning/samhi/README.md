@@ -91,6 +91,25 @@ python scripts/machine_learning/samhi/01_baseline_autoregressive.py --scope both
 python scripts/machine_learning/samhi/02_multimodal_features.py --scope both --experiment-set 2 --history both
 ```
 
+The Phase 2 target and model rows use 2011 LSOA boundaries. Predictors supplied
+on 2021 boundaries are rolled up to their 2011 parent: household rates use
+household-count weights, QOF rates use registered-patient weights, and rurality
+uses the population-weighted majority class. The 2021 RUC nearer/further
+relative-access class is represented by the population share in nearer areas;
+the former six-level isolation score is no longer used. ONS defines “nearer”
+as within a 30-minute drive of a major town or city with over 75,000 people
+([2021 RUC methodology](https://www.ons.gov.uk/methodology/geography/geographicalproducts/ruralurbanclassifications/2021ruralurbanclassification)).
+Child adjacency is also collapsed to a 2011-area neighbour graph. IMD child ranks/deciles are population-weighted
+summaries, not recalculated parent-area IMD scores; gas-grid rates use household
+counts as a proxy weight because the model input table supplies rates rather
+than property denominators. For a controlled comparison with the former
+single-child mapping, use `--boundary-mode first_child`; the default is
+`--boundary-mode aggregate_2011`. Lincolnshire's lookup has split/unchanged
+relationships only. The national exact-fit lookup also contains merged or
+complex relationships, where 2021 predictors cannot always be uniquely
+recovered for each 2011 area; treat national results as provisional until that
+case is handled separately.
+
 ### 5. Run Phase 3 Multi-Year Forward Projections (2023 - 2027)
 Retrains the model set on the complete historical panel up to 2022 (295k+ rows) and recursively forecasts future mental health need for **2023–2027**. ElasticNet is the primary projection model; the other model outputs are retained for comparison. The 2026–2027 values are exploratory longer-range projections: each year's SAMHI estimate feeds into the next, while external inputs remain at their latest available values. The historical backtests do not validate a four- or five-year forecast horizon, so later-year estimates should be interpreted with additional caution.
 
@@ -284,9 +303,9 @@ the source panel consumed by the forecasting scripts.
 
 The three-component z-score mean is only a diagnostic. It is not the SAMHI
 index because it omits the hospital component and does not use the published
-two-factor loading structure. The refreshed 2011--2022 audit has mean Pearson
-correlation 0.843 and mean Spearman correlation 0.858 with published SAMHI;
-the 2022 Pearson correlation is 0.853. This is an empirical proxy diagnostic,
+two-factor loading structure. The refreshed 2011--2022 audit has mean annual
+Pearson correlation 0.840 and mean Spearman correlation 0.854 with published
+SAMHI; the 2022 Pearson correlation is 0.843. This is an empirical proxy diagnostic,
 not reproduction of the official four-component index. The published CSV
 contains no hospital component or official loadings, so the missing hospital
 contribution cannot be recovered from public files.

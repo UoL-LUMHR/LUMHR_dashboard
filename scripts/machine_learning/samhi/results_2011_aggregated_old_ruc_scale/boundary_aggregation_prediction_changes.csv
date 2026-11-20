@@ -1,0 +1,12 @@
+model,mean_abs_prediction_change,max_abs_prediction_change,lsoa_years_changed_over_0_001
+pred_ar_baseline_persistence,0.0,0.0,0
+pred_ar_baseline_momentum_drift,0.0,0.0,0
+pred_multimodal_ridge,0.0044103524531720895,0.07634245877588913,1023
+pred_multimodal_elasticnet,0.002258860141338818,0.07616830596261825,585
+pred_multimodal_random_forest,0.011374729255129366,0.07833469212251631,1184
+pred_multimodal_extra-trees,0.019898095843985664,0.12170217972480946,1213
+pred_multimodal_lightgbm,0.024781494034577446,0.12864657574750593,1217
+pred_multimodal_xgboost,0.024111334448968253,0.18458059999999987,1228
+pred_multimodal_catboost,0.02260935807493331,0.12601936997755336,1227
+pred_explainable_boosting_machine_(ebm),0.013480093027758596,0.06719930648360672,1190
+pred_stacking_ensemble_(super_learner),0.009477514840343976,0.10030770018208632,1179
